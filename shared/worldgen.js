@@ -62,7 +62,7 @@ export function makeGen(seed) {
     const cheb = Math.max(Math.abs(x), Math.abs(y));
     if (cheb <= 1) return null;
     const forest = fbm(seed + 3, x, y, 14);
-    if (cheb > 4 && hash3(seed, x, y, 1) < (forest > 0.55 ? 0.3 : 0.035)) return { t: 'tree' };
+    if (cheb > 4 && hash3(seed, x, y, 1) < (forest > 0.62 ? 0.12 : 0.015)) return { t: 'tree' };
     const h = hash3(seed, x, y, 2);
     if (h < 0.035) return { t: 'bush' };
     if (h < 0.05 && cheb > 3) return { t: 'rock' };
