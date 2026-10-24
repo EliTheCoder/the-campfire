@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Campfire</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/client/style.css" />
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <canvas id="overlay"></canvas>
+
+  <div id="hud" hidden>
+    <div id="fire-panel">
+      <div class="row"><span id="fire-tier">Burning</span><span id="fire-time">0:00</span></div>
+      <div id="fuel-bar"><div id="fuel-fill"></div><div id="fuel-text"></div></div>
+      <div class="row small"><span id="fire-burn"></span><span id="fire-demand"></span></div>
+    </div>
+    <div id="weather"></div>
+    <div id="revive-prompt" hidden></div>
+    <div id="cold-warn" hidden></div>
+    <div id="bottom">
+      <div id="torch-bar" hidden><span id="torch-label">Torch</span><div class="bar"><div id="torch-fill"></div></div></div>
+      <div id="hotbar"></div>
+    </div>
+    <div id="log"></div>
+    <input id="chat" maxlength="200" placeholder="say something..." hidden />
+    <div id="tooltip" hidden></div>
+    <div id="hint-keys">[Tab] Inventory · [C] Craft · [H] Help</div>
+
+    <div id="inv-panel" class="panel" hidden>
+      <h2>Inventory</h2>
+      <div id="inv-grid"></div>
+      <p class="small dim">Click two slots to swap. The first row is your hotbar. [Q] drops the selected stack.</p>
+    </div>
+    <div id="craft-panel" class="panel" hidden>
+      <h2>Crafting</h2>
+      <div id="craft-list"></div>
+    </div>
+    <div id="help-panel" class="panel" hidden>
+      <h2>Keep the fire alive</h2>
+      <div class="help-cols">
+        <div>
+          <p><b>The fire is everything.</b> If it goes out, you all lose. Feed it: select fuel, <b>right-click</b> the fire (Shift = whole stack).</p>
+          <p><b>You can only walk in light.</b> Carry spare torches. They auto-light at any flame and only burn while you're out in the dark. Your torch lights a 3x3 around you, but only for you.</p>
+          <p><b>Place torches</b> to light 5x5 for everyone. They burn out unless an <b>Ember Root</b> connects them to the fire.</p>
+          <p>If your light dies in the dark you have a few seconds to reach light. Otherwise you drop everything. A friend can revive you at the fire, but it costs fuel.</p>
+          <p>The fire gets <b>hungrier</b> over time. Weak fuel turns to ash once it's hot enough. Climb the fuel ladder: leaves, sticks, logs, peat, charcoal.</p>
+        </div>
+        <div>
+          <p><b>Controls</b></p>
+          <p>WASD: move · Hold LMB: gather / pick up · RMB: use / place / feed<br/>
+          1-8 / wheel: hotbar · Tab: inventory · C: craft · R: revive friend<br/>
+          Q: drop stack · Enter: chat · P: palette mode · G G: give up</p>
+          <p><b>Automation</b></p>
+          <p>Machines touching a powered root send their output down it into the fire. Kindling Bushes and Grove Trees grow fuel in light. Rot Pits turn leaves into peat. Rain Sprouters turn rain into sticks. Kilns (from ruin blueprints) bake logs into charcoal.</p>
+          <p class="dim">Ruins out in the dark hold chests. Many have an eternal flame that never goes out.</p>
+        </div>
+      </div>
+      <p class="dim small">[H] to close</p>
+    </div>
+  </div>
+
+  <div id="connect" class="screen">
+    <h1>THE CAMPFIRE</h1>
+    <p class="tag">Keep it burning. Don't wander into the dark.</p>
+    <label>Name <input id="name" maxlength="16" /></label>
+    <label>Server <input id="server" /></label>
+    <button id="join">Gather 'round</button>
+    <p id="connect-err" class="err"></p>
+  </div>
+
+  <div id="dead-screen" class="screen" hidden>
+    <h2>The dark took you.</h2>
+    <p>Your belongings lie where you fell. A friend can revive you at the fire.</p>
+  </div>
+
+  <div id="over-screen" class="screen" hidden>
+    <h1>The fire went out.</h1>
+    <p id="over-time"></p>
+    <button id="restart">Light a new fire</button>
+  </div>
+
+  <script type="module" src="/client/main.js"></script>
+</body>
+</html>

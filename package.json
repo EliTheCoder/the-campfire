@@ -1,0 +1,19 @@
+{
+  "name": "the-campfire",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k --handle-input -n server,client -c yellow,cyan \"node server/index.js --cheats\" \"vite\"",
+    "server": "node server/index.js",
+    "client": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6",
+    "vite": "^8.3.5"
+  }
+}
