@@ -131,7 +131,7 @@ addEventListener('keydown', (e) => {
     return;
   }
   const k = e.key.toLowerCase();
-  keys.add(k);
+  keys.add(e.code);
   if (k === 'enter') { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
   if (k >= '1' && k <= '8') { st.sel = Number(k) - 1; renderInv(); }
   if (k === 'tab' || k === 'i') { e.preventDefault(); toggle('inv-panel'); }
@@ -147,7 +147,7 @@ addEventListener('keydown', (e) => {
   }
   st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
 });
-addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouse.l = false; });
 
 function toggle(id) {
@@ -191,10 +191,11 @@ function move(dt) {
   me.freezing = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y)) && me.held <= 0;
   if (me.dead || st.over || document.activeElement === $('chat')) { me.m = false; return; }
   let dx = 0, dy = 0;
-  if (keys.has('a') || keys.has('arrowleft')) dx--;
-  if (keys.has('d') || keys.has('arrowright')) dx++;
-  if (keys.has('w') || keys.has('arrowup')) dy--;
-  if (keys.has('s') || keys.has('arrowdown')) dy++;
+  // Physical key positions (e.code), so WASD works on Dvorak/AZERTY/etc.
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) dx--;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) dx++;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) dy--;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) dy++;
   me.m = !!(dx || dy);
   if (!me.m) return;
   const len = Math.hypot(dx, dy);
