@@ -205,7 +205,7 @@ addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY;
 gl.addEventListener('mousedown', (e) => {
   if (!st.world || st.me.dead) return;
   if (e.button === 0) mouse.l = true;
-  if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey });
+  if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
 });
 addEventListener('mouseup', (e) => { if (e.button === 0) { mouse.l = false; st.harvest = null; } });
 gl.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); audio.play('tick', { vol: 0.3 }); });
@@ -299,7 +299,7 @@ function itemTooltip(s) {
     const demand = st.world.fire.demand;
     html += `<br><span style="color:#ffb070">Fuel ${it.fuel.value} · heat tier ${it.fuel.heat + 1} (${HEAT_NAMES[it.fuel.heat]})</span>`;
     if (it.fuel.heat < demand) html += `<br><span style="color:#e0705a">Too weak for the fire right now - mostly ash</span>`;
-    html += '<br><span class="dim">RMB the fire to feed (Shift: whole stack)</span>';
+    html += '<br><span class="dim">RMB the fire to feed (Ctrl: whole stack)</span>';
   }
   if (it.place) html += '<br><span class="dim">RMB a tile to place</span>';
   if (it.learn) html += '<br><span class="dim">RMB anywhere to read</span>';
@@ -330,7 +330,7 @@ function updateTooltip(x, y, inReach) {
   let html = '';
   const lit = w.sharedLit(x, y);
   if (x === 0 && y === 0) {
-    html = `<b>The Campfire</b><br>RMB with fuel: feed it (Shift: whole stack)`;
+    html = `<b>The Campfire</b><br>RMB with fuel: feed it (Ctrl: whole stack)`;
   } else {
     const b = w.getB(x, y);
     const f = w.getFeature(x, y);
