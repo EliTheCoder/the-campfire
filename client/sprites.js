@@ -238,6 +238,10 @@ export function makeSprites() {
     for (const [x, y, w, h] of [[2, 8, 6, 5], [7, 5, 6, 6], [8, 10, 6, 4]]) { g.r(x, y, w, h, '#1e1c22'); g.r(x, y, w, 1, '#4a4652'); g.p(x + 1, y + 1, '#6a6474'); }
     g.p(5, 11, '#a03a1a');
   });
+  S.icon.charred_stick = mk(16, 16, (g) => {
+    for (let i = 0; i < 11; i++) { g.p(3 + i, 13 - i, i > 7 ? '#1a1416' : '#4a3a30'); g.p(4 + i, 13 - i, i > 7 ? '#0e0a0c' : '#2a1e18'); }
+    g.r(12, 2, 3, 3, '#141012'); g.p(13, 3, '#a8301a'); g.p(12, 4, '#5a1a10');
+  });
   S.icon.stone = mk(16, 16, (g) => {
     const rnd = mulberry32(21);
     blob({ ...g, p: (x, y, c) => g.p(x, y, c) }, 6, 9, 4.5, 3.6, ['#9a98a3', '#77757f', '#5a5862', '#36353c'], rnd, 0.1);

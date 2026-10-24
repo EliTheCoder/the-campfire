@@ -7,6 +7,7 @@ export const ITEMS = {
   log: { name: 'Log', fuel: { value: 55, heat: 2 }, desc: 'Chop trees with an axe.' },
   peat: { name: 'Peat', fuel: { value: 90, heat: 3 }, desc: 'Leaves, rotted down in a Rot Pit.' },
   charcoal: { name: 'Charcoal', fuel: { value: 160, heat: 4 }, desc: 'Logs baked in a Charcoal Kiln.' },
+  charred_stick: { name: 'Charred Stick', fuel: { value: 6, heat: 0 }, desc: "What's left of a burnt-out torch. Re-craft it into a torch." },
   stone: { name: 'Stone' },
   seed: { name: 'Kindling Seed', place: 'kindling', desc: 'Plant in light. Grows leaves forever.' },
   sapling: { name: 'Sapling', place: 'sapling', desc: 'Plant in light. Grows into a grove tree that sheds sticks and logs.' },
@@ -55,6 +56,7 @@ export const FEATURES = {
 
 export const RECIPES = [
   { id: 'torch', out: ['torch', 2], in: { stick: 1, leaf: 2 } },
+  { id: 'retorch', out: ['torch', 1], in: { charred_stick: 1, leaf: 1 } },
   { id: 'axe', out: ['axe', 1], in: { stick: 3, stone: 2 } },
   { id: 'workbench', out: ['workbench', 1], in: { stick: 6, stone: 4 } },
   { id: 'ember_root', out: ['ember_root', 4], in: { log: 1, leaf: 2 }, station: 'workbench' },

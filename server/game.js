@@ -233,6 +233,18 @@ export class Game {
     if (!this.inReach(p, x, y)) return;
     const w = this.world;
     const b = w.getB(x, y);
+    if (b?.t === 'torch') {
+      if (b.fuel <= 0) this.give(p, 'charred_stick', 1);
+      else {
+        // Keep total fuel honest: the used part of this torch is added to your current burn.
+        this.give(p, 'torch', 1);
+        p.burn = (p.burn || 0) + (1 - b.fuel / TORCH.placedFuel) * TORCH.heldFuel;
+        if (p.burn >= TORCH.heldFuel) { p.burn -= TORCH.heldFuel; removeItem(p.inv, 'torch', 1); this.give(p, 'charred_stick', 1); }
+      }
+      this.setB(x, y, null);
+      this.fx.push(['break', x, y]);
+      return;
+    }
     if (b) {
       this.give(p, BUILDINGS[b.t].item, 1);
       for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.give(p, it, n);
@@ -350,7 +362,7 @@ export class Game {
       this.say(`${p.name} pried open an old chest.`, '#e0c070');
       return;
     }
-    if (f?.t === 'eternal') { this.tell(p, 'The eternal flame. It will never go out. Torches relight here.', '#9fe8d8'); return; }
+    if (f?.t === 'eternal') { this.tell(p, 'The eternal flame. It never goes out.', '#9fe8d8'); return; }
     if (it?.place) this.place(p, x, y, s);
   }
 
@@ -478,7 +490,8 @@ export class Game {
           p.burn += dt * (rain ? TORCH.heldRainMult : 1);
           if (p.burn >= TORCH.heldFuel) {
             p.burn = 0;
-            removeItem(p.inv, 'torch', 1); p.invDirty = true;
+            removeItem(p.inv, 'torch', 1);
+            this.give(p, 'charred_stick', 1);
             torches--;
             if (!torches) { p.lit = false; this.tell(p, 'Your last torch burns out! Get to light, fast!', '#e07a6a'); }
             else this.tell(p, `A torch burns out. You light the next from its embers. (${torches} left)`, '#c9a27a');
