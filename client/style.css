@@ -94,3 +94,4 @@ button:not(:disabled):hover { filter: brightness(1.1); }
 
 /* HUD scales with window height (see applyUIScale in main.js). */
 #hud, .screen { zoom: var(--ui, 1); }
+kbd { font: inherit; }

@@ -28,12 +28,12 @@
     <div id="log"></div>
     <input id="chat" maxlength="200" placeholder="say something..." hidden />
     <div id="tooltip" hidden></div>
-    <div id="hint-keys">[Tab] Inventory · [C] Craft · [H] Help</div>
+    <div id="hint-keys">[Tab] Inventory · [<kbd data-key="craft"></kbd>] Craft · [<kbd data-key="help"></kbd>] Help</div>
 
     <div id="inv-panel" class="panel" hidden>
       <h2>Inventory</h2>
       <div id="inv-grid"></div>
-      <p class="small dim">Click two slots to swap. The first row is your hotbar. [Q] drops the selected stack.</p>
+      <p class="small dim">Click two slots to swap. The first row is your hotbar. [<kbd data-key="drop"></kbd>] drops the selected stack.</p>
     </div>
     <div id="craft-panel" class="panel" hidden>
       <h2>Crafting</h2>
@@ -51,15 +51,15 @@
         </div>
         <div>
           <p><b>Controls</b></p>
-          <p>WASD: move · Hold LMB: gather / pick up · RMB: use / place / feed<br/>
-          1-8 / wheel: hotbar · Tab: inventory · C: craft · R: revive friend<br/>
-          Q: drop stack · Enter: chat · P: palette mode · M: mute · -/=: UI size · G G: give up</p>
+          <p><kbd data-key="up,left,down,right"></kbd>: move · Hold LMB: gather / pick up · RMB: use / place / feed<br/>
+          1-8 / wheel: hotbar · Tab / <kbd data-key="inventory"></kbd>: inventory · <kbd data-key="craft"></kbd>: craft · <kbd data-key="revive"></kbd>: revive friend<br/>
+          <kbd data-key="drop"></kbd>: drop stack · Enter: chat · <kbd data-key="palette"></kbd>: palette mode · <kbd data-key="mute"></kbd>: mute · <kbd data-key="uiDown,uiUp" data-sep="/"></kbd>: UI size · <kbd data-key="giveup"></kbd> <kbd data-key="giveup"></kbd>: give up</p>
           <p><b>Automation</b></p>
           <p>Machines touching a powered root send their output down it into the fire. Kindling Bushes and Grove Trees grow fuel in light. Rot Pits turn leaves into peat. Rain Sprouters turn rain into sticks. Kilns (from ruin blueprints) bake logs into charcoal.</p>
           <p class="dim">Ruins out in the dark hold chests. Many have an eternal flame that never goes out.</p>
         </div>
       </div>
-      <p class="dim small">[H] to close</p>
+      <p class="dim small">[<kbd data-key="help"></kbd>] to close</p>
     </div>
   </div>
 

@@ -135,6 +135,26 @@ for (const id of ['name', 'server']) $(id).addEventListener('keydown', (e) => { 
 $('restart').onclick = () => send({ t: 'restart' });
 
 // ---------------- input ----------------
+// All binds are physical key positions (e.code). Labels show what that key types on the
+// player's layout (e.g. KeyC reads "J" on Dvorak), like Minecraft does.
+const BINDS = {
+  up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD',
+  inventory: 'KeyI', craft: 'KeyC', help: 'KeyH', drop: 'KeyQ', revive: 'KeyR',
+  palette: 'KeyP', mute: 'KeyM', giveup: 'KeyG', uiDown: 'Minus', uiUp: 'Equal',
+};
+let layoutMap = null;
+function keyLabel(code) {
+  const l = layoutMap?.get(code);
+  if (l) return l.length === 1 ? l.toUpperCase() : l;
+  return code.replace(/^Key|^Digit/, '').replace('Minus', '-').replace('Equal', '=');
+}
+const K = (action) => keyLabel(BINDS[action]);
+function refreshKeyLabels() {
+  for (const el of document.querySelectorAll('[data-key]')) el.textContent = el.dataset.key.split(',').map((c) => keyLabel(BINDS[c] || c)).join(el.dataset.sep ?? '');
+}
+navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); }).catch(() => {});
+refreshKeyLabels();
+
 const keys = new Set();
 let mouse = { x: 0, y: 0, l: false };
 let lastG = 0;
@@ -147,22 +167,23 @@ addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { chat.value = ''; chat.hidden = true; chat.blur(); }
     return;
   }
-  const k = e.key.toLowerCase();
-  keys.add(e.code);
-  if (k === 'enter') { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
-  if (k >= '1' && k <= '8') { st.sel = Number(k) - 1; renderInv(); audio.play('tick', { vol: 0.4 }); }
-  if (k === 'm') log(audio.toggleMute() ? 'Sound muted. [M] to unmute.' : 'Sound on.', '#aaa');
-  if (k === '-' || k === '=' || k === '+') { uiNudge = Math.max(0.6, Math.min(2, uiNudge * (k === '-' ? 0.9 : 1.1))); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); }
-  if (k === 'tab' || k === 'i') { e.preventDefault(); toggle('inv-panel'); }
-  if (k === 'c') toggle('craft-panel');
-  if (k === 'h') toggle('help-panel');
-  if (k === 'escape') for (const id of ['inv-panel', 'craft-panel', 'help-panel']) $(id).hidden = true;
-  if (k === 'q') send({ t: 'drop', slot: st.sel });
-  if (k === 'r') send({ t: 'revive' });
-  if (k === 'p') { R.palette = !R.palette; log(`Palette mode ${R.palette ? 'on' : 'off'}.`, '#aaa'); }
-  if (k === 'g') {
+  const c = e.code;
+  keys.add(c);
+  if (c === 'Enter' || c === 'NumpadEnter') { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
+  const digit = /^Digit([1-8])$/.exec(c);
+  if (digit) { st.sel = Number(digit[1]) - 1; renderInv(); audio.play('tick', { vol: 0.4 }); }
+  if (c === BINDS.mute) log(audio.toggleMute() ? `Sound muted. [${K('mute')}] to unmute.` : 'Sound on.', '#aaa');
+  if (c === BINDS.uiDown || c === BINDS.uiUp) { uiNudge = Math.max(0.6, Math.min(2, uiNudge * (c === BINDS.uiDown ? 0.9 : 1.1))); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); }
+  if (c === 'Tab' || c === BINDS.inventory) { e.preventDefault(); toggle('inv-panel'); }
+  if (c === BINDS.craft) toggle('craft-panel');
+  if (c === BINDS.help) toggle('help-panel');
+  if (c === 'Escape') for (const id of ['inv-panel', 'craft-panel', 'help-panel']) $(id).hidden = true;
+  if (c === BINDS.drop) send({ t: 'drop', slot: st.sel });
+  if (c === BINDS.revive) send({ t: 'revive' });
+  if (c === BINDS.palette) { R.palette = !R.palette; log(`Palette mode ${R.palette ? 'on' : 'off'}.`, '#aaa'); }
+  if (c === BINDS.giveup) {
     const now = performance.now();
-    if (now - lastG < 1500) { send({ t: 'giveup' }); lastG = 0; } else { lastG = now; log('Press G again to give in to the dark (drops your items).', '#aaa'); }
+    if (now - lastG < 1500) { send({ t: 'giveup' }); lastG = 0; } else { lastG = now; log(`Press ${K('giveup')} again to give in to the dark (drops your items).`, '#aaa'); }
   }
   st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
 });
@@ -212,10 +233,10 @@ function move(dt) {
   if (me.dead || st.over || document.activeElement === $('chat')) { me.m = false; return; }
   let dx = 0, dy = 0;
   // Physical key positions (e.code), so WASD works on Dvorak/AZERTY/etc.
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) dx--;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) dx++;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) dy--;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) dy++;
+  if (keys.has(BINDS.left) || keys.has('ArrowLeft')) dx--;
+  if (keys.has(BINDS.right) || keys.has('ArrowRight')) dx++;
+  if (keys.has(BINDS.up) || keys.has('ArrowUp')) dy--;
+  if (keys.has(BINDS.down) || keys.has('ArrowDown')) dy++;
   me.m = !!(dx || dy);
   if (!me.m) return;
   const len = Math.hypot(dx, dy);
@@ -476,7 +497,7 @@ function updateHUD(dt) {
   const dead = [...st.players.values()].filter((p) => p.dead);
   const rp = $('revive-prompt');
   const nearFire = Math.hypot(me.x - 0.5, me.y - 0.5) <= 5;
-  if (dead.length && !me.dead && nearFire) { rp.hidden = false; rp.textContent = `[R] Revive ${dead[0].name} (costs ${FIRE.reviveCost} fuel)`; }
+  if (dead.length && !me.dead && nearFire) { rp.hidden = false; rp.textContent = `[${K('revive')}] Revive ${dead[0].name} (costs ${FIRE.reviveCost} fuel)`; }
   else if (dead.length && !me.dead) { rp.hidden = false; rp.textContent = `${dead.map((p) => p.name).join(', ')} ${dead.length > 1 ? 'are' : 'is'} waiting in the fire...`; }
   else rp.hidden = true;
 
