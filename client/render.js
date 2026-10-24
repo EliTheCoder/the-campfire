@@ -236,11 +236,11 @@ export function createRenderer(glCanvas, overlay, S) {
       }
     };
     const lights = [];
-    const flick = (s) => 0.92 + 0.05 * Math.sin(t * 11 + s) + 0.03 * Math.sin(t * 23 + s * 3);
+    const flick = (s) => 0.97 + 0.02 * Math.sin(t * 11 + s) + 0.01 * Math.sin(t * 23 + s * 3);
     const fuel = w.fire.fuel;
     if (fuel > 0) {
       const ratio = Math.min(1, fuel / FIRE.maxFuel);
-      sq(0, 0, FIRE.radius, (0.8 + 0.2 * ratio) * flick(1), 0.42);
+      sq(0, 0, FIRE.radius, (0.9 + 0.1 * ratio) * flick(1), 0.2);
       const pal = lerpPalette(w.fire.temp);
       lights.push({ x: 8 - camX, y: 4 - camY, r: TILE * (4 + 2.5 * ratio), i: (0.55 + 0.4 * ratio) * flick(2), c: rgb(pal[1]) });
     }
@@ -249,7 +249,7 @@ export function createRenderer(glCanvas, overlay, S) {
       if (x < x0 - 3 || x > x1 + 3 || y < y0 - 3 || y > y1 + 3) continue;
       if (b.t === 'torch' && b.fuel > 0) {
         const dim = Math.min(1, 0.45 + b.fuel / 40);
-        sq(x, y, TORCH.placedRadius, 0.78 * dim * flick(x * 7 + y), 0.34);
+        sq(x, y, TORCH.placedRadius, 0.85 * dim * flick(x * 7 + y), 0.18);
         lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 4 - camY, r: TILE * 3, i: 0.6 * dim * flick(x + y * 3), c: rgb(TORCH_PAL[1]) });
       } else if (b.t === 'kiln' && b.ok && b.conn && b.in >= 2) {
         lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 10 - camY, r: TILE * 2.5, i: 0.5 * flick(x), c: rgb('#ff7a2a') });
@@ -259,13 +259,13 @@ export function createRenderer(glCanvas, overlay, S) {
     }
     for (const r of ruins) {
       if (!r.eternal) continue;
-      sq(r.x, r.y, ETERNAL_RADIUS, 0.72 * flick(r.x), 0.3);
+      sq(r.x, r.y, ETERNAL_RADIUS, 0.82 * flick(r.x), 0.15);
       lights.push({ x: r.x * TILE + 8 - camX, y: r.y * TILE + 2 - camY, r: TILE * 4.5, i: 0.7 * flick(r.y), c: rgb(ETERNAL_PALETTE[1]) });
     }
     for (const p of living) {
       const tx = Math.floor(p.rx), ty = Math.floor(p.ry);
       if (p.held > 0 && !w.sharedLit(tx, ty)) {
-        if (p.id === st.myId) sq(tx, ty, TORCH.heldRadius, 0.6 * flick(5), 0.18);
+        if (p.id === st.myId) sq(tx, ty, TORCH.heldRadius, 0.72 * flick(5), 0.12);
         else sq(tx, ty, TORCH.heldRadius, 0.2, 0.05);
         lights.push({ x: p.rx * TILE + 4 - camX, y: p.ry * TILE - 4 - camY, r: TILE * 2.2, i: 0.55 * flick(p.id), c: rgb(TORCH_PAL[1]) });
       } else if (p.id === st.myId && !w.sharedLit(tx, ty)) {
@@ -441,6 +441,7 @@ export function createRenderer(glCanvas, overlay, S) {
     const s = R.scale, dpr = R.dpr;
     oc.setTransform(1, 0, 0, 1, 0, 0);
     oc.clearRect(0, 0, overlay.width, overlay.height);
+    oc.imageSmoothingEnabled = false; // crisp pixel previews (resizing resets this)
     const toS = (wx, wy) => [(wx - R.camX) * s, (wy - R.camY) * s];
     const w = st.world;
 

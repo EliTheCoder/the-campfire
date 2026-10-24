@@ -50,9 +50,9 @@ void main() {
     glow += u_lc[i] * a * a;
   }
 
-  // Dithered banding of the tile light: crisp pixel-art falloff.
+  // Clean per-tile light: no dithering, lit tiles read clearly.
   float dith = bayer4(px);
-  float q = clamp(floor(L * 6.0 + dith) / 6.0, 0.0, 1.0);
+  float q = clamp(L, 0.0, 1.0);
   vec3 lightCol = mix(vec3(0.35, 0.38, 0.62), vec3(1.0, 0.86, 0.68), smoothstep(0.1, 0.8, q));
   float ambient = 0.018;
   vec3 col = sc * (ambient + q * lightCol * 1.55 + glow * (0.45 + 0.8 * q));
