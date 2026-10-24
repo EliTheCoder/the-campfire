@@ -91,3 +91,6 @@ button:not(:disabled):hover { filter: brightness(1.1); }
 .screen input:focus { border-color: var(--edge-hi); }
 .err { color: #e0705a; min-height: 1.2em; }
 #dead-screen { background: rgba(10, 12, 30, 0.45); pointer-events: none; justify-content: flex-start; padding-top: 22vh; }
+
+/* HUD scales with window height (see applyUIScale in main.js). */
+#hud, .screen { zoom: var(--ui, 1); }

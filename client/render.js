@@ -493,7 +493,7 @@ export function createRenderer(glCanvas, overlay, S) {
     }
 
     // names
-    oc.font = `${Math.round(7 * dpr)}px "Pixelify Sans", monospace`;
+    oc.font = `${Math.round(7 * dpr * (R.ui || 1))}px "Pixelify Sans", monospace`;
     oc.textAlign = 'center';
     for (const p of st.players.values()) {
       if (p.dead || p.id === st.myId) continue;
@@ -503,7 +503,7 @@ export function createRenderer(glCanvas, overlay, S) {
     }
 
     // floating texts
-    oc.font = `${Math.round(8 * dpr)}px "Pixelify Sans", monospace`;
+    oc.font = `${Math.round(8 * dpr * (R.ui || 1))}px "Pixelify Sans", monospace`;
     R.floats = R.floats.filter((f) => (f.life -= dt) > 0);
     for (const f of R.floats) {
       const [sx, sy] = toS(f.x * TILE, f.y * TILE - (1.6 - f.life) * 10);

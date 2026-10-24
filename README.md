@@ -28,3 +28,7 @@ Server only: `npm run server -- --port 7777 --seed 123` (add `--cheats` for chat
 - `client/`: Canvas2D scene and emissive layers, WebGL post-processing (`post.js`), procedural pixel sprites (`sprites.js`), HUD and input (`main.js`).
 
 Balance knobs live in `shared/constants.js` and `shared/defs.js`.
+
+## Audio
+
+Ambience (fire, rain, wind, freezing drone, eternal-flame hum) is synthesized live in `client/audio.js`. One-shot sounds are CC0 from Kenney (`public/sfx/`, license included). **Music slot:** drop a track at `public/music/theme.ogg` and it loops automatically. `M` mutes.

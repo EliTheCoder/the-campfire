@@ -4,6 +4,8 @@ import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_SPEED, PLAYER_HALF, PACKET_SPEED
 import { countItem, hasAll } from '../shared/inventory.js';
 import { makeSprites, FLAME_PALETTES } from './sprites.js';
 import { createRenderer } from './render.js';
+import { createAudio } from './audio.js';
+import { chunkOf } from '../shared/worldgen.js';
 
 const $ = (id) => document.getElementById(id);
 const S = makeSprites();
@@ -12,7 +14,18 @@ for (const [k, c] of Object.entries(S.icon)) iconURL[k] = c.toDataURL();
 
 const R = createRenderer($('gl'), $('overlay'), S);
 if (import.meta.env?.DEV) window.__campfire = { get st() { return st; }, R };
-addEventListener('resize', () => R.resize());
+const audio = createAudio();
+
+// HUD scale follows window height; -/= nudge it and the choice is remembered.
+let uiNudge = 1;
+try { uiNudge = Number(localStorage.getItem('campfire.ui')) || 1; } catch {}
+function applyUIScale() {
+  const ui = Math.max(1, Math.min(3, (innerHeight / 740) * uiNudge));
+  document.documentElement.style.setProperty('--ui', ui.toFixed(3));
+  R.ui = ui;
+}
+applyUIScale();
+addEventListener('resize', () => { R.resize(); applyUIScale(); });
 
 const st = {
   ws: null, myId: 0, world: null, players: new Map(), inv: [], known: new Set(),
@@ -67,6 +80,7 @@ function onMsg(m) {
       w.time = m.time;
       w.setFuel(m.fire.fuel);
       Object.assign(w.fire, m.fire);
+      if (m.weather.s !== st.weather.s) { if (m.weather.s === 'rain_warn') audio.synth('thunder'); if (m.weather.s === 'wind_warn' || m.weather.s === 'wind') audio.synth('gust'); }
       st.weather = m.weather;
       w.weatherWind = m.weather.s === 'wind';
       const seen = new Set();
@@ -76,7 +90,9 @@ function onMsg(m) {
         if (!q) { q = { ...p, rx: p.x, ry: p.y }; st.players.set(p.id, q); }
         Object.assign(q, p);
         if (p.id === st.myId) {
-          const wasDead = st.me.dead;
+          const wasDead = st.me.dead, wasHeld = st.me.held;
+          if (wasHeld <= 0 && p.held > 0) audio.synth('torchLight');
+          if (wasHeld > 0 && p.held <= 0 && !p.dead && !w.sharedLit(Math.floor(st.me.x), Math.floor(st.me.y))) audio.synth('torchOut');
           st.me.dead = p.dead; st.me.held = p.held; st.me.cold = p.cold;
           if (p.dead && !wasDead) st.harvest = null;
         }
@@ -86,12 +102,12 @@ function onMsg(m) {
       if (m.B) for (const [k, v] of m.B) { const [x, y] = unkey(k); w.setB(x, y, v); }
       if (m.D) for (const [k, v] of m.D) { if (v?.length) w.drops.set(k, v); else w.drops.delete(k); }
       st.packets = m.pk.map(([id, x, y, nx, ny, p, item]) => ({ id, x, y, nx, ny, p, item }));
-      if (m.fx) for (const e of m.fx) R.fx(e, w);
+      if (m.fx) for (const e of m.fx) { R.fx(e, w); audio.fx(e); }
       if (m.B && !$('craft-panel').hidden) renderCraft();
       break;
     }
     case 'inv': st.inv = m.inv; renderInv(); break;
-    case 'known': st.known = new Set(m.known); renderCraft(); break;
+    case 'known': st.known = new Set(m.known); renderCraft(); audio.synth('learn'); break;
     case 'msg': log(m.text, m.c); break;
     case 'tp': st.me.x = m.x; st.me.y = m.y; break;
     case 'over':
@@ -112,6 +128,7 @@ $('join').onclick = () => {
   const url = $('server').value.trim();
   localStorage.setItem('campfire.name', name);
   localStorage.setItem('campfire.server', url);
+  audio.init();
   connect(url, name);
 };
 for (const id of ['name', 'server']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join').click(); });
@@ -133,7 +150,9 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys.add(e.code);
   if (k === 'enter') { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
-  if (k >= '1' && k <= '8') { st.sel = Number(k) - 1; renderInv(); }
+  if (k >= '1' && k <= '8') { st.sel = Number(k) - 1; renderInv(); audio.play('tick', { vol: 0.4 }); }
+  if (k === 'm') log(audio.toggleMute() ? 'Sound muted. [M] to unmute.' : 'Sound on.', '#aaa');
+  if (k === '-' || k === '=' || k === '+') { uiNudge = Math.max(0.6, Math.min(2, uiNudge * (k === '-' ? 0.9 : 1.1))); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); }
   if (k === 'tab' || k === 'i') { e.preventDefault(); toggle('inv-panel'); }
   if (k === 'c') toggle('craft-panel');
   if (k === 'h') toggle('help-panel');
@@ -153,6 +172,7 @@ addEventListener('blur', () => { keys.clear(); mouse.l = false; });
 function toggle(id) {
   const el = $(id);
   el.hidden = !el.hidden;
+  audio.play(el.hidden ? 'close' : 'open', { vol: 0.45 });
   if (id === 'craft-panel' && !el.hidden) renderCraft();
   if (id === 'inv-panel') { st.pick = -1; renderInv(); }
   st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
@@ -167,7 +187,7 @@ gl.addEventListener('mousedown', (e) => {
   if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey });
 });
 addEventListener('mouseup', (e) => { if (e.button === 0) { mouse.l = false; st.harvest = null; } });
-gl.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); });
+gl.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); audio.play('tick', { vol: 0.3 }); });
 
 // ---------------- movement (client-predicted) ----------------
 function walkable(w, tx, ty) {
@@ -185,7 +205,7 @@ function canOccupy(w, x, y) {
   }
   return true;
 }
-let lastDarkMsg = 0;
+let lastDarkMsg = 0, stepAcc = 0;
 function move(dt) {
   const w = st.world, me = st.me;
   me.freezing = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y)) && me.held <= 0;
@@ -208,8 +228,14 @@ function move(dt) {
   const ny = me.y + (dy / len) * sp;
   const ry = canOccupy(w, me.x, ny);
   if (ry === true) me.y = ny; else if (ry === 'dark') blockedDark = true;
+  stepAcc += sp;
+  if (stepAcc > 0.85) {
+    stepAcc = 0;
+    audio.play(w.ground(Math.floor(me.x), Math.floor(me.y)) === 'floor' ? 'step_stone' : 'step_grass', { vol: me.freezing ? 0.25 : 0.35, rate: me.freezing ? 0.8 : 1 });
+  }
   if (blockedDark && performance.now() - lastDarkMsg > 2500) {
     lastDarkMsg = performance.now();
+    audio.play('bump', { vol: 0.5, rate: 0.7 });
     R.float(countItem(st.inv, 'torch') ? 'Too dark...' : 'Too dark - you need a torch', me.x, me.y - 1, '#bcd4ff');
   }
 }
@@ -243,8 +269,42 @@ function updateHover(dt) {
   updateTooltip(tx, ty, inReach);
 }
 
+const HEAT_NAMES = ['Leaves', 'Sticks', 'Logs', 'Peat', 'Charcoal'];
+function itemTooltip(s) {
+  const it = ITEMS[s.item];
+  let html = `<b>${it.name}</b>${s.n > 1 ? ` <span class="dim">x${s.n}</span>` : ''}`;
+  if (it.desc) html += `<br>${it.desc}`;
+  if (it.fuel) {
+    const demand = st.world.fire.demand;
+    html += `<br><span style="color:#ffb070">Fuel ${it.fuel.value} · heat tier ${it.fuel.heat + 1} (${HEAT_NAMES[it.fuel.heat]})</span>`;
+    if (it.fuel.heat < demand) html += `<br><span style="color:#e0705a">Too weak for the fire right now - mostly ash</span>`;
+    html += '<br><span class="dim">RMB the fire to feed (Shift: whole stack)</span>';
+  }
+  if (it.place) html += '<br><span class="dim">RMB a tile to place</span>';
+  if (it.learn) html += '<br><span class="dim">RMB anywhere to read</span>';
+  return html;
+}
+
+function placeTip(tip, html) {
+  tip.innerHTML = html;
+  tip.hidden = false;
+  const z = R.ui || 1;
+  const w = tip.offsetWidth * z, h = tip.offsetHeight * z;
+  const left = Math.min(innerWidth - w - 8, mouse.x + 18);
+  const top = mouse.y + 18 + h > innerHeight ? mouse.y - h - 10 : mouse.y + 18;
+  tip.style.left = left / z + 'px';
+  tip.style.top = top / z + 'px';
+}
+
 function updateTooltip(x, y, inReach) {
   const w = st.world, tip = $('tooltip');
+  // Hovering an inventory/hotbar slot takes priority over the world.
+  const slotEl = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('.slot');
+  if (slotEl) {
+    const s = st.inv[Number(slotEl.dataset.slot)];
+    if (s) placeTip(tip, itemTooltip(s)); else tip.hidden = true;
+    return;
+  }
   if (st.uiBlocking) { tip.hidden = true; return; }
   let html = '';
   const lit = w.sharedLit(x, y);
@@ -261,10 +321,7 @@ function updateTooltip(x, y, inReach) {
   }
   if (!html) { tip.hidden = true; return; }
   if (!inReach) html += '<br><span class="dim">(out of reach)</span>';
-  tip.innerHTML = html;
-  tip.hidden = false;
-  tip.style.left = Math.min(innerWidth - 310, mouse.x + 18) + 'px';
-  tip.style.top = mouse.y + 18 + 'px';
+  placeTip(tip, html);
 }
 
 function featureHint(f) {
@@ -318,10 +375,8 @@ function renderInv() {
     const s = st.inv[i];
     const d = document.createElement('div');
     d.className = 'slot' + (i === st.sel ? ' sel' : '') + (i === st.pick ? ' pick' : '') + (s && ITEMS[s.item].fuel ? ' fuel' : '');
-    if (s) {
-      d.innerHTML = `<img src="${iconURL[s.item]}">${s.n > 1 ? `<span class="n">${s.n}</span>` : ''}`;
-      d.title = ITEMS[s.item].name + (ITEMS[s.item].desc ? ' - ' + ITEMS[s.item].desc : '') + (ITEMS[s.item].fuel ? ` (fuel ${ITEMS[s.item].fuel.value}, heat ${ITEMS[s.item].fuel.heat})` : '');
-    }
+    d.dataset.slot = i;
+    if (s) d.innerHTML = `<img src="${iconURL[s.item]}">${s.n > 1 ? `<span class="n">${s.n}</span>` : ''}`;
     if (withKey) d.insertAdjacentHTML('beforeend', `<span class="k">${i + 1}</span>`);
     d.onmousedown = (e) => {
       e.stopPropagation();
@@ -361,7 +416,7 @@ function renderCraft() {
     const btn = document.createElement('button');
     btn.textContent = 'Craft';
     btn.disabled = !ok;
-    btn.onclick = () => send({ t: 'craft', id: r.id });
+    btn.onclick = () => { send({ t: 'craft', id: r.id }); audio.play('craft', { vol: 0.5 }); };
     row.append(btn);
     list.append(row);
   }
@@ -426,6 +481,29 @@ function updateHUD(dt) {
   if ((craftRefresh += dt) > 0.5 && !$('craft-panel').hidden) { craftRefresh = 0; renderCraft(); }
 }
 
+// ---------------- audio ----------------
+function updateAudio(dt) {
+  const w = st.world, me = st.me;
+  audio.listener.x = me.x; audio.listener.y = me.y;
+  const r = w.fire.fuel / FIRE.maxFuel;
+  const fireStage = w.fire.fuel <= 0 ? -1 : r < 0.08 ? 0 : r < 0.25 ? 1 : r < 0.5 ? 2 : r < 0.8 ? 3 : 4;
+  let eternalDist = 99;
+  for (let cy = chunkOf(me.y) - 1; cy <= chunkOf(me.y) + 1; cy++) for (let cx = chunkOf(me.x) - 1; cx <= chunkOf(me.x) + 1; cx++) {
+    const ru = w.gen.ruin(cx, cy);
+    if (ru?.eternal) eternalDist = Math.min(eternalDist, Math.hypot(ru.x + 0.5 - me.x, ru.y + 0.5 - me.y));
+  }
+  let torchDist = 99;
+  for (const [k, b] of w.bld) {
+    if (b.t !== 'torch' || b.fuel <= 0) continue;
+    const [x, y] = unkey(k);
+    const d = Math.abs(x + 0.5 - me.x) + Math.abs(y + 0.5 - me.y);
+    if (d < torchDist) torchDist = d;
+  }
+  const outside = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y));
+  if (outside && me.held > 0) torchDist = 0.5;
+  audio.update({ dt, fireStage, temp: w.fire.temp, weather: st.weather.s, freezing: me.freezing && !me.dead, cold: me.cold, eternalDist, torchDist });
+}
+
 // ---------------- loop ----------------
 let last = performance.now(), sendAcc = 0;
 function frame(now) {
@@ -444,6 +522,7 @@ function frame(now) {
     if ((sendAcc += dt) >= 0.05) { sendAcc = 0; if (!st.me.dead) send({ t: 'pos', x: +st.me.x.toFixed(3), y: +st.me.y.toFixed(3), f: st.me.f, m: st.me.m }); }
     updateHover(dt);
     updateHUD(dt);
+    updateAudio(dt);
     R.draw(st, dt, t);
   }
   requestAnimationFrame(frame);
