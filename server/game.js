@@ -26,7 +26,8 @@ function sig(b) {
   for (const k in b) {
     if (k === 'cd') continue;
     const v = b[k];
-    if (typeof v === 'number') s += k + (v > 2 ? Math.round(v / 5) : Math.round(v * 10)) + ';';
+    // floor, not round: 0.95 and 1.0 must differ or 'finished growing' never gets sent
+    if (typeof v === 'number') s += k + (v > 2 ? Math.floor(v / 5) : Math.floor(v * 10)) + ';';
     else if (typeof v === 'object') s += k + JSON.stringify(v) + ';';
     else s += k + v + ';';
   }
