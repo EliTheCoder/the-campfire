@@ -95,6 +95,12 @@ button:not(:disabled):hover { filter: brightness(1.1); }
 /* HUD scales with window height (see applyUIScale in main.js). */
 #hud, .screen { zoom: var(--ui, 1); }
 kbd { font: inherit; }
-#craft-panel::-webkit-scrollbar, #help-panel::-webkit-scrollbar { width: 8px; }
-#craft-panel::-webkit-scrollbar-thumb, #help-panel::-webkit-scrollbar-thumb { background: var(--edge); }
 .panel { background: rgba(18, 13, 14, 0.97); }
+
+/* Panels don't scroll themselves; their .scroll body does, with a pixel-art scrollbar (pixelScroll in main.js). */
+.panel { display: flex; flex-direction: column; overflow: hidden; }
+.panel .scroll { overflow-y: auto; min-height: 0; flex: 1; scrollbar-width: none; padding-right: 18px; }
+.panel .scroll::-webkit-scrollbar { display: none; }
+.pxbar { position: absolute; right: 8px; width: 10px; background: #0e0909; border: 2px solid #000; box-shadow: 0 0 0 2px var(--edge); }
+.pxbar .thumb { position: absolute; left: 0; right: 0; background: var(--edge-hi); border-top: 2px solid #ffb070; border-bottom: 2px solid #6a3a1a; cursor: grab; }
+.pxbar .thumb:hover, .pxbar .thumb.drag { background: #e8873a; }

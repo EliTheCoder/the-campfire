@@ -195,6 +195,7 @@ function toggle(id) {
   el.hidden = !el.hidden;
   audio.play(el.hidden ? 'close' : 'open', { vol: 0.45 });
   if (id === 'craft-panel' && !el.hidden) renderCraft();
+  for (const u of scrollUpdaters) u();
   if (id === 'inv-panel') { st.pick = -1; renderInv(); }
   st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
 }
@@ -220,8 +221,12 @@ function walkable(w, tx, ty) {
   return 'dark';
 }
 function canOccupy(w, x, y) {
+  const me = st.me;
   for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const r = walkable(w, Math.floor(x + ox * PLAYER_HALF), Math.floor(y + oy * PLAYER_HALF));
+    const tx = Math.floor(x + ox * PLAYER_HALF), ty = Math.floor(y + oy * PLAYER_HALF);
+    const r = walkable(w, tx, ty);
+    // Never trap a player inside something solid they already overlap (e.g. spawned on a building).
+    if (r === 'solid' && Math.abs(tx + 0.5 - me.x) <= 0.5 + PLAYER_HALF && Math.abs(ty + 0.5 - me.y) <= 0.5 + PLAYER_HALF) continue;
     if (r !== true) return r;
   }
   return true;
@@ -443,6 +448,48 @@ function renderCraft() {
   }
   if (!st.known.has('kiln')) list.insertAdjacentHTML('beforeend', '<p class="small dim">Some designs were lost to the dark. Search ruins for blueprints.</p>');
 }
+
+// Pixel-art scrollbar for a .scroll element inside a panel (native bars can't be styled in Firefox).
+function pixelScroll(el) {
+  const bar = document.createElement('div'); bar.className = 'pxbar';
+  const thumb = document.createElement('div'); thumb.className = 'thumb';
+  bar.append(thumb);
+  el.parentElement.append(bar);
+  const update = () => {
+    const ratio = el.clientHeight / el.scrollHeight;
+    bar.hidden = !el.clientHeight || ratio >= 1;
+    if (bar.hidden) return;
+    bar.style.top = el.offsetTop + 'px';
+    bar.style.height = el.clientHeight + 'px';
+    const track = el.clientHeight - 4;
+    const th = Math.max(16, Math.round(track * ratio));
+    // snap to 2px steps so it moves like pixel art
+    const top = Math.round(((track - th) * el.scrollTop) / (el.scrollHeight - el.clientHeight) / 2) * 2;
+    thumb.style.height = th + 'px';
+    thumb.style.top = top + 'px';
+  };
+  el.addEventListener('scroll', update);
+  new ResizeObserver(update).observe(el);
+  new MutationObserver(update).observe(el, { childList: true, subtree: true });
+  thumb.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    thumb.setPointerCapture(e.pointerId); thumb.classList.add('drag');
+    const y0 = e.clientY, s0 = el.scrollTop, z = R.ui || 1;
+    const move = (ev) => {
+      const track = el.clientHeight - thumb.offsetHeight;
+      el.scrollTop = s0 + ((ev.clientY - y0) / z) * ((el.scrollHeight - el.clientHeight) / track);
+    };
+    const up = () => { thumb.classList.remove('drag'); thumb.removeEventListener('pointermove', move); thumb.removeEventListener('pointerup', up); };
+    thumb.addEventListener('pointermove', move);
+    thumb.addEventListener('pointerup', up);
+  });
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.target !== bar) return;
+    el.scrollTop += (e.offsetY < thumb.offsetTop ? -1 : 1) * el.clientHeight * 0.9;
+  });
+  return update;
+}
+const scrollUpdaters = [...document.querySelectorAll('.panel .scroll')].map(pixelScroll);
 
 const logEl = $('log');
 function log(text, c = '#ddd') {

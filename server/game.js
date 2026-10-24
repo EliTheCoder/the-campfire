@@ -67,7 +67,7 @@ export class Game {
 
   // ---------- players ----------
   resetPlayer(p) {
-    p.x = 0.5; p.y = 2.5;
+    [p.x, p.y] = this.spawnPoint();
     p.inv = newInv();
     addItem(p.inv, 'torch', 2);
     p.held = 0; p.burn = 0; p.lit = false; p.cold = 0; p.dead = false; p.invDirty = true;
@@ -130,13 +130,26 @@ export class Game {
     const w = this.world;
     w.setFuel(w.fire.fuel - FIRE.reviveCost);
     p.dead = false; p.cold = 0; p.held = 0; p.burn = 0; p.lit = false;
-    p.x = 0.5; p.y = 1.6;
+    [p.x, p.y] = this.spawnPoint();
     addItem(p.inv, 'torch', 1);
     p.invDirty = true;
     this.send(p.ws, { t: 'tp', x: p.x, y: p.y });
     this.fx.push(['revive', 0, 0]);
     this.say(`${p.name} rises from the embers. The fire weakens...`, '#f0b060');
     if (w.fire.fuel <= 0) this.gameOver();
+  }
+
+  // Nearest free tile by the fire, starting just south of it.
+  spawnPoint() {
+    const w = this.world;
+    for (let r = 0; r <= 6; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = dx, y = 2 + dy;
+        if (!w.isSolid(x, y)) return [x + 0.5, y + 0.5];
+      }
+    }
+    return [0.5, 2.5];
   }
 
   nearLitPlayer(p) {
