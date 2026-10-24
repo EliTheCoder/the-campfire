@@ -374,7 +374,8 @@ function outStr(b) {
 }
 function buildingInfo(w, b, x, y) {
   const conn = w.connected(x, y);
-  const link = conn ? '<span style="color:#ffb070">Connected to the fire</span>' : '<span class="dim">Not on a root: output stays here</span>';
+  const link = conn ? '<span style="color:#ffb070">Connected to the fire</span>'
+    : '<span class="dim">Not connected: needs an ember root directly beside it (up/down/left/right). Output stays here.</span>';
   switch (b.t) {
     case 'torch': return b.fuel > 0 ? (b.conn ? 'Fed by the roots - burns forever' : `Fuel: ${Math.ceil(b.fuel)}s <span class="dim">(RMB with fuel to top up)</span>`) : 'Burnt out. RMB with fuel to relight, or pick up the charred stick.';
     case 'root': return b.g < 1 ? `Growing... ${pct(b.g)}` : w.rootPowered(x, y) ? 'Glowing with the fire\'s heat' : '<span style="color:#e0705a">Dark - the fire is too weak to reach this far</span>';
