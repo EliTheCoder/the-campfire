@@ -105,7 +105,8 @@ function onMsg(m) {
 
 // ---------------- connect screen ----------------
 $('name').value = localStorage.getItem('campfire.name') || '';
-$('server').value = localStorage.getItem('campfire.server') || `ws://${location.hostname || 'localhost'}:${DEFAULT_PORT}`;
+const defaultServer = location.host ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws` : `ws://localhost:${DEFAULT_PORT}`;
+$('server').value = (location.protocol !== 'https:' && localStorage.getItem('campfire.server')) || defaultServer;
 $('join').onclick = () => {
   const name = $('name').value.trim() || 'Wanderer';
   const url = $('server').value.trim();
