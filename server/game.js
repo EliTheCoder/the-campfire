@@ -70,7 +70,7 @@ export class Game {
     p.x = 0.5; p.y = 2.5;
     p.inv = newInv();
     addItem(p.inv, 'torch', 2);
-    p.held = 0; p.cold = 0; p.dead = false; p.invDirty = true;
+    p.held = 0; p.burn = 0; p.lit = false; p.cold = 0; p.dead = false; p.invDirty = true;
     p.face = 1; p.moving = false;
   }
 
@@ -122,14 +122,14 @@ export class Game {
     if (p.dead) return;
     this.fx.push(['death', r1(p.x), r1(p.y)]);
     this.dropAll(p);
-    p.dead = true; p.held = 0; p.cold = 0;
+    p.dead = true; p.held = 0; p.burn = 0; p.lit = false; p.cold = 0;
     this.say(`${p.name} was taken by ${why}. Revive them at the fire (R).`, '#e07a6a');
   }
 
   revive(p) {
     const w = this.world;
     w.setFuel(w.fire.fuel - FIRE.reviveCost);
-    p.dead = false; p.cold = 0; p.held = 0;
+    p.dead = false; p.cold = 0; p.held = 0; p.burn = 0; p.lit = false;
     p.x = 0.5; p.y = 1.6;
     addItem(p.inv, 'torch', 1);
     p.invDirty = true;
@@ -137,6 +137,13 @@ export class Game {
     this.fx.push(['revive', 0, 0]);
     this.say(`${p.name} rises from the embers. The fire weakens...`, '#f0b060');
     if (w.fire.fuel <= 0) this.gameOver();
+  }
+
+  nearLitPlayer(p) {
+    for (const q of this.players.values()) {
+      if (q !== p && !q.dead && q.held > 0 && Math.hypot(q.x - p.x, q.y - p.y) <= 2) return true;
+    }
+    return false;
   }
 
   inReach(p, x, y) {
@@ -367,7 +374,9 @@ export class Game {
     }
     if ((type === 'kindling' || type === 'sapling') && w.ground(x, y) === 'floor') { this.tell(p, 'Nothing grows on stone.'); return; }
     if (f) { this.give(p, FEATURES[f.t].loose, 1); this.setF(x, y, null); }
-    this.setB(x, y, newBuilding(type));
+    const b = newBuilding(type);
+    if (type === 'torch' && p.lit && countItem(p.inv, 'torch') === 1) { b.fuel = TORCH.placedFuel * (1 - p.burn / TORCH.heldFuel); p.burn = 0; }
+    this.setB(x, y, b);
     removeItem(p.inv, s.item, 1);
     p.invDirty = true;
     this.fx.push(['place', x, y]);
@@ -455,17 +464,31 @@ export class Game {
       if (p.dead) continue;
       alive++;
       const tx = Math.floor(p.x), ty = Math.floor(p.y);
+      // Your carried light IS the torches in your inventory. They're lit at any flame (or from a
+      // friend's lit torch), put away while you're in light, and burn one at a time in the dark.
+      let torches = countItem(p.inv, 'torch');
+      if (!torches) { p.lit = false; p.burn = 0; }
       if (w.sharedLit(tx, ty)) {
         p.cold = 0;
-        // Torches are lit from existing flames; stowed while you're in light.
-        if (p.held <= 0 && countItem(p.inv, 'torch') > 0) { removeItem(p.inv, 'torch', 1); p.held = TORCH.heldFuel; p.invDirty = true; }
-      } else if (p.held > 0) {
-        p.held = Math.max(0, p.held - dt * (rain ? TORCH.heldRainMult : 1));
-        if (p.held === 0) this.tell(p, 'Your torch sputters out! Get to light, fast!', '#e07a6a');
+        if (torches) p.lit = true;
       } else {
-        p.cold += dt;
-        if (p.cold >= COLD_GRACE) { this.kill(p, 'the cold dark'); continue; }
+        if (torches && !p.lit && this.nearLitPlayer(p)) { p.lit = true; this.tell(p, 'Your torch catches from a friend\'s flame.', '#ffb070'); }
+        if (p.lit && torches) {
+          p.cold = 0;
+          p.burn += dt * (rain ? TORCH.heldRainMult : 1);
+          if (p.burn >= TORCH.heldFuel) {
+            p.burn = 0;
+            removeItem(p.inv, 'torch', 1); p.invDirty = true;
+            torches--;
+            if (!torches) { p.lit = false; this.tell(p, 'Your last torch burns out! Get to light, fast!', '#e07a6a'); }
+            else this.tell(p, `A torch burns out. You light the next from its embers. (${torches} left)`, '#c9a27a');
+          }
+        } else {
+          p.cold += dt;
+          if (p.cold >= COLD_GRACE) { this.kill(p, 'the cold dark'); continue; }
+        }
       }
+      p.held = p.lit && torches ? TORCH.heldFuel - p.burn : 0;
       // pickups
       const f = w.getFeature(tx, ty);
       if (f && FEATURES[f.t]?.loose) { this.give(p, FEATURES[f.t].loose, 1); this.setF(tx, ty, null); this.fx.push(['pickup', tx, ty]); }

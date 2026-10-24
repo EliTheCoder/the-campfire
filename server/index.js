@@ -54,7 +54,7 @@ const commands = {
   },
   players: () => {
     if (!game.players.size) return log('no players');
-    for (const p of game.players.values()) log(`#${p.id} ${p.name} (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) ${p.dead ? 'DEAD' : `torch ${p.held.toFixed(0)}s, ${countItem(p.inv, 'torch')} spare`}`);
+    for (const p of game.players.values()) log(`#${p.id} ${p.name} (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) ${p.dead ? 'DEAD' : `${countItem(p.inv, 'torch')} torches${p.held > 0 ? ` (current ${p.held.toFixed(0)}s)` : ''}`}`);
   },
   say: (...w) => game.say(`[server] ${w.join(' ')}`, '#ffcc66'),
   restart: (seed) => game.reset(seed != null ? Number(seed) : undefined),

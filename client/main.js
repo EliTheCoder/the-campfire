@@ -91,7 +91,7 @@ function onMsg(m) {
         Object.assign(q, p);
         if (p.id === st.myId) {
           const wasDead = st.me.dead, wasHeld = st.me.held;
-          if (wasHeld <= 0 && p.held > 0) audio.synth('torchLight');
+          if (wasHeld <= 0 && p.held > 0 && !w.sharedLit(Math.floor(st.me.x), Math.floor(st.me.y))) audio.synth('torchLight');
           if (wasHeld > 0 && p.held <= 0 && !p.dead && !w.sharedLit(Math.floor(st.me.x), Math.floor(st.me.y))) audio.synth('torchOut');
           st.me.dead = p.dead; st.me.held = p.held; st.me.cold = p.cold;
           if (p.dead && !wasDead) st.harvest = null;
@@ -194,7 +194,7 @@ function walkable(w, tx, ty) {
   if (w.isSolid(tx, ty)) return 'solid';
   if (w.sharedLit(tx, ty)) return true;
   const mx = Math.floor(st.me.x), my = Math.floor(st.me.y);
-  if (st.me.held > 0 && Math.max(Math.abs(tx - mx), Math.abs(ty - my)) <= TORCH.heldRadius) return true;
+  if (st.me.held > 0 && countItem(st.inv, 'torch') > 0 && Math.max(Math.abs(tx - mx), Math.abs(ty - my)) <= TORCH.heldRadius) return true;
   if (st.me.freezing) return true; // stumbling blindly toward safety
   return 'dark';
 }
@@ -208,7 +208,7 @@ function canOccupy(w, x, y) {
 let lastDarkMsg = 0, stepAcc = 0;
 function move(dt) {
   const w = st.world, me = st.me;
-  me.freezing = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y)) && me.held <= 0;
+  me.freezing = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y)) && (me.held <= 0 || !countItem(st.inv, 'torch'));
   if (me.dead || st.over || document.activeElement === $('chat')) { me.m = false; return; }
   let dx = 0, dy = 0;
   // Physical key positions (e.code), so WASD works on Dvorak/AZERTY/etc.
@@ -459,11 +459,13 @@ function updateHUD(dt) {
 
   // carried torch
   const outside = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y));
-  const spare = countItem(st.inv, 'torch');
+  const torches = countItem(st.inv, 'torch');
+  const lit = me.held > 0 && torches > 0;
   const tb = $('torch-bar');
-  tb.hidden = me.dead || (me.held <= 0 && !outside && !spare);
-  $('torch-fill').style.width = (me.held / TORCH.heldFuel) * 100 + '%';
-  $('torch-label').textContent = me.held > 0 ? (outside ? `Torch ${Math.ceil(me.held)}s` : `Torch (stowed) · ${spare} spare`) : spare ? `${spare} torch${spare > 1 ? 'es' : ''} (lights at a flame)` : 'No torch';
+  tb.hidden = me.dead || (!torches && !outside);
+  $('torch-fill').style.width = (lit ? me.held / TORCH.heldFuel : 0) * 100 + '%';
+  const n = `${torches} torch${torches === 1 ? '' : 'es'}`;
+  $('torch-label').textContent = !torches ? 'No torches' : !lit ? `${n} - unlit, reach a flame` : outside ? `Torch ${Math.ceil(me.held)}s · ${n}` : `${n} (put away)`;
   tb.classList.toggle('low', outside && me.held > 0 && me.held < 15);
 
   const cw = $('cold-warn');
