@@ -117,8 +117,9 @@ export function createRenderer(glCanvas, overlay, S) {
     }
     // rain
     if (st.weather.s === 'rain') {
-      const n = (R.W * R.H) / 900 * dt * 60;
-      for (let i = 0; i < n; i++) {
+      const n = (R.W * R.H) / 100000 * 300 * dt; // ~120 drops on screen
+      for (let i = n; i > 0; i--) {
+        if (Math.random() > i) continue;
         const life = 0.25 + Math.random() * 0.35;
         P({ x: R.camX + Math.random() * (R.W + 60), y: R.camY - 20 + Math.random() * R.H * 0.7, vx: -50, vy: 260, life, col: '#8fb0d0', a: 0.55, streak: true, splash: true });
       }
