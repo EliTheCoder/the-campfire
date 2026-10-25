@@ -27,12 +27,12 @@ wss.on('connection', (ws, req) => {
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     if (!player) {
-      if (m.t === 'join') { player = game.join(ws, m.name); log(`${player.name} joined from ${req.socket.remoteAddress}`); }
+      if (m.t === 'join') { player = game.join(ws, m.name, m.token); log(`${player.name} joined from ${req.socket.remoteAddress}`); }
       return;
     }
     game.handle(player, m);
   });
-  ws.on('close', () => { if (player) { game.leave(player); log(`${player.name} left`); } });
+  ws.on('close', () => { if (player && player.ws === ws) { game.leave(player, ws); log(`${player.name} left`); } });
 });
 
 let last = performance.now();

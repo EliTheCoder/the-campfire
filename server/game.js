@@ -41,6 +41,7 @@ export class Game {
     this.broadcast = broadcast;
     this.log = log;
     this.players = new Map();
+    this.offline = new Map(); // token -> player who disconnected; restored as-is on rejoin
     this.nextId = 1;
     this.tickN = 0;
     this.reset(seed);
@@ -62,6 +63,7 @@ export class Game {
     this.dD = new Set();
     this.sigs = new Map();
     this.fx = [];
+    this.offline.clear();
     for (const p of this.players.values()) { this.resetPlayer(p); this.welcome(p); }
     this.log?.(`World reset. Seed ${this.seed}`);
   }
@@ -75,9 +77,31 @@ export class Game {
     p.face = 1; p.moving = false;
   }
 
-  join(ws, name) {
+  // Players are identified by a per-browser token, so reconnecting restores you exactly
+  // (inventory, position, death) instead of handing out a fresh starter kit.
+  join(ws, name, token) {
+    name = String(name || 'Wanderer').slice(0, 16);
+    token = typeof token === 'string' ? token.slice(0, 64) : null;
+    let p = token && [...this.players.values()].find((q) => q.token === token);
+    if (p) {
+      // Same browser connected again (refresh / second tab): take over the live player.
+      const old = p.ws;
+      p.ws = ws; p.name = name;
+      try { old.close(); } catch {}
+      this.welcome(p);
+      return p;
+    }
+    p = token && this.offline.get(token);
+    if (p) {
+      this.offline.delete(token);
+      p.ws = ws; p.name = name; p.invDirty = true;
+      this.players.set(p.id, p);
+      this.welcome(p);
+      this.say(`${p.name} returned to the fire.`, p.color);
+      return p;
+    }
     const id = this.nextId++;
-    const p = { id, ws, name: String(name || 'Wanderer').slice(0, 16), color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length] };
+    p = { id, ws, token, name, color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length] };
     this.resetPlayer(p);
     this.players.set(id, p);
     this.welcome(p);
@@ -85,10 +109,11 @@ export class Game {
     return p;
   }
 
-  leave(p) {
-    if (!this.players.has(p.id)) return;
-    if (!p.dead) this.dropAll(p);
+  leave(p, ws) {
+    if (!this.players.has(p.id) || (ws && p.ws !== ws)) return; // a newer connection took over
     this.players.delete(p.id);
+    if (p.token) this.offline.set(p.token, p);
+    else if (!p.dead) this.dropAll(p);
     this.say(`${p.name} left.`, '#888');
   }
 

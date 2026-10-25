@@ -37,11 +37,21 @@ const st = {
 // ---------------- networking ----------------
 function send(o) { if (st.ws?.readyState === 1) st.ws.send(JSON.stringify(o)); }
 
+function playerToken() {
+  let t = null;
+  try { t = localStorage.getItem('campfire.token'); } catch {}
+  if (!t) {
+    t = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
+    try { localStorage.setItem('campfire.token', t); } catch {}
+  }
+  return t;
+}
+
 function connect(url, name) {
   $('connect-err').textContent = 'Connecting...';
   const ws = new WebSocket(url);
   st.ws = ws;
-  ws.onopen = () => send({ t: 'join', name });
+  ws.onopen = () => send({ t: 'join', name, token: playerToken() });
   ws.onerror = () => { $('connect-err').textContent = `Couldn't reach ${url}. Is the server running?`; };
   ws.onclose = () => {
     if (st.world) { log('Disconnected from server.', '#e0705a'); $('connect').hidden = false; $('hud').hidden = true; $('connect-err').textContent = 'Disconnected.'; }
