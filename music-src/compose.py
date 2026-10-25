@@ -1,99 +1,105 @@
 #!/usr/bin/env python3
-"""The Campfire - adaptive piano score.
+"""The Campfire - adaptive piano score, built on Eli's song.
+
+Eli wrote the tune in Corgi Echo (source/2026-10-25-belligerent-grison.json): a 4-bar loop in
+G major at 90 bpm over C - D - G - Em, with a piano melody, the same melody an octave up, soft
+low piano chords and a synth bass. The notes below are read straight from that file; the synth
+bass moves to piano (the score is piano only) and the file's drum track, which its arrangement
+never switches on, is left out.
 
 Writes one MIDI file per stem. render.sh turns them into seamlessly looping OGGs with a
 sampled piano (FluidSynth + the CC0 Upright Piano KW soundfont) and reverb (SoX).
 
 Stems (all the same length, played in sync by the game):
-  bed     low left-hand chords             - always
-  flow    rolling broken chords            - when the fire is doing okay
-  melody  the tune                         - when the fire is strong
-  lonely  sparse, distant high notes       - out in the dark / when the fire is low
+  bed     Eli's chords + bass               - always
+  flow    rolling broken chords (new)       - when the fire is doing okay
+  melody  Eli's melody (+ his octave double) - when the fire is strong
+  lonely  sparse, distant high notes (new)  - out in the dark / when the fire is low
+
+Form (8-bar sections): A = Eli's phrase twice, then again with the octave doubling, a new
+bridge B in the same rhythms (Am - Em - C - D), and A to close.
 """
-import random, struct, os
+import json, random, struct, os
 
-BPM = 64
-TPB = 480                      # ticks per beat
-BAR = 4                        # beats per bar
-rng = random.Random(7)         # fixed seed: the same "performance" every render
+HERE = os.path.dirname(os.path.abspath(__file__))
+SONG = json.load(open(os.path.join(HERE, 'source', '2026-10-25-belligerent-grison.json')))
 
-# MIDI note numbers
+BPM = SONG['globalClock']['bpm']   # 90
+TPB = 480                          # ticks per beat
+BAR = 4                            # beats per bar
+rng = random.Random(7)             # fixed seed: the same "performance" every render
+
+# ---------------------------------------------------------------- reading Eli's song
+# Echo sequencers count in steps; at rate 0.5 a step is an eighth note (a 32-step clip = 4 bars,
+# matching the group sequencer's 16-beat blocks). Events past the clip's length are leftovers
+# the clip never plays.
+SEQS = SONG['shamuGraph']['nodes']['betterSequencers']['things']
+def clip(seq_id):
+    s = next(v for k, v in SEQS.items() if k.startswith(seq_id))
+    c, step = s['midiClip'], s['rate']
+    return sorted(((e['startBeat'] * step, e['note'] + s['pitch'], e['durationBeats'] * step)
+                   for e in c['events'].values() if e['startBeat'] < c['length']))
+
+ECHO_MELODY = clip('68e1fde0')     # piano lead
+ECHO_OCTAVE = clip('561b6fee')     # the same line, pitch +12
+ECHO_CHORDS = clip('9899c073')     # muffled, reverbed piano chords (lowpass ~1.2k in Echo)
+ECHO_BASS = clip('4b4b83d0')       # sawtooth synth in Echo -> piano here
+PHRASE = 4                         # bars in Eli's loop
+
+def by_bar(notes):
+    bars = [[] for _ in range(PHRASE)]
+    for t, p, d in notes:
+        bars[int(t // BAR)].append((t % BAR, p, d))
+    return bars
+
+# MIDI note numbers for the new parts
 N = {}
 for octave in range(0, 9):
     for i, name in enumerate(['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']):
         N[f'{name}{octave}'] = 12 * (octave + 1) + i
-def n(*names): return [N[x] for x in names]
 
-# ---------------------------------------------------------------- harmony
-# Each bar: (bass voicing for the left hand, upper voicing for the right hand)
-A = [
-    (n('D2', 'A2'),  n('F#4', 'A4', 'C#5', 'E5')),   # Dmaj9
-    (n('B1', 'F#2'), n('D4', 'F#4', 'A4', 'E5')),    # Bm7(add11)
-    (n('G1', 'D2'),  n('B3', 'D4', 'F#4', 'C#5')),   # Gmaj7(#11)
-    (n('C#2', 'A2'), n('E4', 'A4', 'B4', 'E5')),     # A(add9)/C#
-    (n('F#2', 'D3'), n('A4', 'C#5', 'E5', 'F#5')),   # Dmaj9/F#
-    (n('G2', 'D3'),  n('B4', 'D5', 'F#5', 'A5')),    # Gmaj9
-    (n('E2', 'B2'),  n('G4', 'B4', 'D5', 'F#5')),    # Em9
-    (n('A1', 'E2'),  n('E4', 'A4', 'D5', 'E5')),     # Asus4 (resolves in the melody)
-]
-B = [
-    (n('B1', 'F#2'), n('D4', 'F#4', 'A4', 'C#5')),   # Bm9
-    (n('G1', 'D2'),  n('B3', 'D4', 'F#4', 'B4')),    # Gmaj7
-    (n('F#2', 'A2'), n('A3', 'D4', 'F#4', 'C#5')),   # Dmaj7/F#
-    (n('E2', 'B2'),  n('G4', 'B4', 'D5', 'E5')),     # Em7
-    (n('B1', 'F#2'), n('F#4', 'A4', 'C#5', 'D5')),   # Bm9
-    (n('G1', 'D2'),  n('B3', 'D4', 'F#4', 'C#5')),   # Gmaj7(#11)
-    (n('A1', 'E2'),  n('E4', 'A4', 'B4', 'E5')),     # Asus2
-    (n('A1', 'E2'),  n('E4', 'A4', 'C#5', 'E5')),    # A
-]
-SECTIONS = [('A', A), ("A'", A), ('B', B), ("A''", A)]
-CHORDS = [bar for _, sec in SECTIONS for bar in sec]
-BARS = len(CHORDS)
+# ---------------------------------------------------------------- the bridge (new)
+# Same two rhythm figures as Eli's phrase: four eighths then two quarters, and a half note then
+# four eighths. Chords ii - vi - IV - V voiced like his (low root, root, fifth, root, third).
+def bars_of(*bars):
+    return [[(t, N[n], d) for t, n, d in b] for b in bars]
+FIG_A = lambda a, b, c, d, e, f: [(0, a, .5), (.5, b, .5), (1, c, .5), (1.5, d, .5), (2, e, 1), (3, f, 1)]
+FIG_B = lambda a, b, c, d, e: [(0, a, 2), (2, b, .5), (2.5, c, .5), (3, d, .5), (3.5, e, .5)]
+BRIDGE_MEL = bars_of(
+    FIG_A('C5', 'A4', 'C5', 'E5', 'D5', 'E5'),     # Am
+    FIG_B('B4', 'B4', 'C5', 'D5', 'C5'),           # Em
+    FIG_A('E5', 'G4', 'C5', 'E5', 'D5', 'E5'),     # C
+    FIG_B('D5', 'D5', 'E5', 'F#5', 'A5'),          # D   climbs...
+    FIG_A('C6', 'A5', 'E5', 'C5', 'B4', 'C5'),     # Am  ...falls from the top
+    FIG_B('B4', 'G4', 'A4', 'B4', 'G4'),           # Em
+    FIG_A('E5', 'C5', 'G4', 'C5', 'B4', 'A4'),     # C
+    FIG_B('A4', 'F#4', 'G4', 'A4', 'B4'),          # D   steps up into Eli's C5
+)
+BRIDGE_CHORDS = [
+    ['A1', 'A2', 'E3', 'A3', 'C4'], ['E1', 'E2', 'B2', 'E3', 'G3'],
+    ['C1', 'C2', 'G2', 'C3', 'E3'], ['D1', 'D2', 'A2', 'D3', 'F#3'],
+] * 2
+BRIDGE_BASS = ['A1', 'E2', 'C2', 'D2'] * 2
 
-# ---------------------------------------------------------------- melody
-# The hook is one bar: a note, a quick dip to its lower neighbour and back (two eighths), then a
-# held note a third up - "F#, E-F#, A". Its rhythm repeats while the pitches move (sequence),
-# downbeats land on chord tones, and neighbour/passing notes (supertonic etc.) give the colour.
-# (beat within bar, note, length in beats) per bar
-def hook(a, nb, top):
-    return [(0, a, 1), (1, nb, 0.5), (1.5, a, 0.5), (2, top, 2)]
-def bar(*notes):       # free bar: (beat, note, length)...
-    return list(notes)
-
-MEL = {
-    'A': [
-        hook('F#5', 'E5', 'A5'),                                    # Dmaj9     the hook
-        hook('D5', 'C#5', 'F#5'),                                   # Bm7       ...a third lower
-        hook('B4', 'A4', 'D5'),                                     # Gmaj7#11  ...lower again
-        bar((0, 'C#5', 2), (2, 'B4', 1), (3, 'A4', 1)),             # A/C#      settle
-        hook('F#5', 'E5', 'A5'),                                    # D/F#      the hook returns
-        bar((0, 'B5', 1), (1, 'A5', 0.5), (1.5, 'G5', 0.5), (2, 'F#5', 2)),   # Gmaj9  running down
-        bar((0, 'G5', 1), (1, 'F#5', 0.5), (1.5, 'E5', 0.5), (2, 'D5', 2)),   # Em9    ...and down
-        bar((0, 'E5', 1), (1, 'D5', 1), (2, 'C#5', 2)),             # Asus4->A  sus resolves
-    ],
-    "A'": [
-        hook('F#5', 'E5', 'A5'),
-        hook('D5', 'C#5', 'F#5'),
-        hook('B4', 'A4', 'D5'),
-        bar((0, 'C#5', 1), (1, 'E5', 1), (2, 'A5', 2)),             # A/C#      leap up...
-        bar((0, 'D6', 2), (2, 'C#6', 1), (3, 'A5', 1)),             # D/F#      ...to the peak
-        bar((0, 'B5', 1), (1, 'A5', 0.5), (1.5, 'G5', 0.5), (2, 'F#5', 2)),   # Gmaj9
-        bar((0, 'G5', 1), (1, 'F#5', 0.5), (1.5, 'E5', 0.5), (2, 'D5', 1), (3, 'B4', 1)),  # Em9
-        bar((0, 'D5', 2), (2, 'C#5', 2)),                           # A         sus resolves
-    ],
-    'B': [                                                          # the hook, in minor
-        hook('D5', 'C#5', 'F#5'),                                   # Bm9
-        bar((0, 'B4', 2), (2, 'A4', 1), (3, 'B4', 1)),              # Gmaj7
-        hook('A4', 'G4', 'D5'),                                     # D/F#
-        bar((0, 'E5', 2), (2, 'D5', 1), (3, 'B4', 1)),              # Em7
-        hook('F#5', 'E5', 'D5'),                                    # Bm9       (falls this time)
-        bar((0, 'D5', 1), (1, 'C#5', 0.5), (1.5, 'B4', 0.5), (2, 'B4', 2)),   # Gmaj7#11 (C#: the #11 colour)
-        bar((0, 'B4', 1), (1, 'A4', 0.5), (1.5, 'B4', 0.5), (2, 'E5', 2)),    # Asus2
-        bar((0, 'C#5', 2), (2, 'E5', 2)),                           # A         E steps into the hook's F#
-    ],
-}
-MEL["A''"] = MEL['A']
-MELODY = [bar for name, _ in SECTIONS for bar in MEL[name]]
+# ---------------------------------------------------------------- form
+MEL, OCT, CH, BASS = by_bar(ECHO_MELODY), by_bar(ECHO_OCTAVE), by_bar(ECHO_CHORDS), by_bar(ECHO_BASS)
+# each bar: (melody notes, octave-double notes, chord pitches, bass pitch, chord tones for flow)
+BARS_DATA = []
+def add_eli(times, octave):
+    for _ in range(times):
+        for b in range(PHRASE):
+            chord = sorted(p for _, p, _ in CH[b])
+            BARS_DATA.append((MEL[b], OCT[b] if octave else [], chord, BASS[b][0][1], chord))
+def add_bridge():
+    for b in range(8):
+        chord = [N[x] for x in BRIDGE_CHORDS[b]]
+        BARS_DATA.append((BRIDGE_MEL[b], [(t, p + 12, d) for t, p, d in BRIDGE_MEL[b]] if b >= 4 else [],
+                          chord, N[BRIDGE_BASS[b]], chord))
+add_eli(2, octave=False)   # A   bars 1-8   (Eli's opening: the tune on its own)
+add_eli(2, octave=True)    # A   bars 9-16  (his octave doubling joins)
+add_bridge()               # B   bars 17-24 (new)
+add_eli(2, octave=True)    # A   bars 25-32
+BARS = len(BARS_DATA)
 
 # ---------------------------------------------------------------- performance
 def human(t, spread=0.02):           # timing wobble in beats
@@ -102,54 +108,50 @@ def vel(v, spread=5):
     return max(1, min(127, int(v + rng.uniform(-spread, spread))))
 
 def bed():
+    # Eli's chords held for the bar (softly rolled from the bottom), with his bass line on piano:
+    # struck with the chord and again mid-bar, as the synth's sustain would have carried it.
     notes = []
-    for b, (low, _) in enumerate(CHORDS):
+    for b, (_, _, chord, bass, _) in enumerate(BARS_DATA):
         t0 = b * BAR
-        notes.append((human(t0, 0.01), low[0], BAR, vel(42)))
-        notes.append((human(t0 + 0.12, 0.02), low[1], BAR - 0.12, vel(33)))
-        if b % 2 == 1:   # a soft re-strike on the off bars keeps it breathing
-            notes.append((human(t0 + 2.5), low[1] + 12, 1.5, vel(26)))
+        for i, p in enumerate(chord):
+            notes.append((human(t0 + i * 0.03, 0.01), p, BAR, vel(34 - i * 2 if p > 40 else 40)))
+        notes.append((human(t0, 0.01), bass + 12 if bass < 33 else bass, BAR, vel(38)))
+        notes.append((human(t0 + 2.5), bass + 12, 1.5, vel(24)))
     return notes
 
-FLOW_PATTERNS = [
-    [(0, 0), (0.5, 1), (1.5, 2), (2, 3), (3, 1), (3.5, 2)],
-    [(0, 0), (1, 2), (1.5, 3), (2.5, 1), (3, 2)],
-    [(0, 1), (0.5, 2), (1, 3), (2, 0), (2.5, 2), (3.5, 3)],
-    [(0, 0), (0.75, 1), (1.5, 2), (2.25, 3)],
-]
 def flow():
+    # new: eighth-note broken chords in the middle, under the tune (never below E3 so the bass
+    # stays clear); the pattern turns over every bar so it rolls instead of ticking
+    PAT = [0, 1, 2, 1, 3, 1, 2, 1]
     notes = []
-    for b, (_, up) in enumerate(CHORDS):
-        pat = FLOW_PATTERNS[(b * 3 + b // 8) % len(FLOW_PATTERNS)]
-        for beat, idx in pat:
-            v = 30 + (6 if beat == 0 else 0) + rng.uniform(-4, 4)
-            # an octave below the voicing, so the rolling chords sit under the melody instead of
-            # in its range; anything that would drop below E3 stays up to avoid mud with the bass
-            p = up[idx] - 12
-            if p < N['E3']:
-                p += 12
-            notes.append((human(b * BAR + beat), p, 1.0, vel(v, 2)))
+    for b, (*_, chord) in enumerate(BARS_DATA):
+        tones = sorted({(p - 48) % 12 + 48 + (12 if (p - 48) % 12 + 48 < N['E3'] else 0) for p in chord})
+        root = min(chord, key=lambda p: (p % 12 != chord[0] % 12, p))
+        tones = sorted({root % 12 + 48 + (12 if root % 12 + 48 < N['E3'] else 0)} | set(tones))[:3]
+        tones.append(tones[0] + 12)
+        for i, idx in enumerate(PAT):
+            v = 26 + (6 if i == 0 else 3 if i == 4 else 0)
+            notes.append((human(b * BAR + i * 0.5), tones[idx], 0.9, vel(v, 2)))
     return notes
 
 def melody():
     notes = []
-    for b, bar in enumerate(MELODY):
-        for beat, name, length in bar:
-            accent = 6 if beat == 0 else 0
-            notes.append((human(b * BAR + beat, 0.03), N[name], length * 0.95, vel(48 + accent)))
+    for b, (mel, octv, *_) in enumerate(BARS_DATA):
+        for line, base in ((mel, 50), (octv, 36)):
+            for t, p, d in line:
+                accent = 6 if t == 0 else 3 if t == 2 else 0
+                notes.append((human(b * BAR + t, 0.02), p, d * 0.95, vel(base + accent)))
     return notes
 
 def lonely():
-    # a high, distant note every couple of bars, taken from the tune an octave up
+    # new: a high, distant note every couple of bars, taken from the tune's downbeats an octave
+    # up, with holes left in; loneliness needs silence
     notes = []
     for b in range(0, BARS, 2):
-        bar = MELODY[b] or MELODY[b + 1]
-        if not bar:
-            continue
-        beat, name, _ = bar[0]
         if b % 8 == 6:
-            continue  # leave holes; loneliness needs silence
-        notes.append((human(b * BAR + beat + 0.5, 0.05), N[name] + 12, 6, vel(30, 3)))
+            continue
+        t, p, _ = BARS_DATA[b][0][0]
+        notes.append((human(b * BAR + t + 0.5, 0.05), p + 12, 6, vel(30, 3)))
     return notes
 
 # ---------------------------------------------------------------- MIDI writing
@@ -192,8 +194,8 @@ def write_midi(path, notes, loops=2, pedal=True):
         f.write(b'MTrk' + struct.pack('>I', len(track)) + track)
 
 if __name__ == '__main__':
-    out = os.path.join(os.path.dirname(__file__), 'build')
+    out = os.path.join(HERE, 'build')
     os.makedirs(out, exist_ok=True)
     for name, fn in [('bed', bed), ('flow', flow), ('melody', melody), ('lonely', lonely)]:
-        write_midi(os.path.join(out, f'{name}.mid'), fn())
+        write_midi(os.path.join(out, f'{name}.mid'), fn(), pedal=name != 'flow')
     print(f'{BARS} bars at {BPM} bpm = {BARS * BAR * 60 / BPM:.2f}s per loop')

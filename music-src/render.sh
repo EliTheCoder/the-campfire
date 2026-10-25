@@ -20,12 +20,13 @@ for s in $STEMS; do
   # each stem gets its own colour so they stay distinct: the rolling chords are dark and soft,
   # the melody clear on top
   case $s in
-    flow) TONE="lowpass 1700 treble -6 3000" ;;
-    melody) TONE="lowpass 4200 treble +1 3000" ;;
+    bed) TONE="lowpass 1250 bass +2 120" ;;       # Eli's chords were a lowpassed (~1.15k) piano
+    flow) TONE="lowpass 1900 treble -6 3000" ;;
+    melody) TONE="lowpass 5000 treble +1 3000" ;;
     *) TONE="lowpass 2800 treble -3 3500" ;;
   esac
   sox "build/$s-raw.wav" "build/$s-wet.wav" \
-    $TONE bass +2 120 \
+    $TONE \
     reverb 78 55 100 100 30 -1 \
     trim "$LOOP" "$LOOP"
 done
