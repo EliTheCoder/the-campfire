@@ -2,6 +2,13 @@ import { CHUNK } from './constants.js';
 import { hash3, fbm, mulberry32 } from './rng.js';
 
 export const chunkOf = (v) => Math.floor((v + CHUNK / 2) / CHUNK);
+
+// Fisher-Yates. Never use array.sort with a random comparator for world gen: browsers sort
+// differently, so the client and server would build different worlds from the same seed.
+function shuffle(arr, rnd) {
+  for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr;
+}
 const K = (x, y) => x + ',' + y;
 
 export const NOTES = [
@@ -73,7 +80,7 @@ export function makeGen(seed) {
       s.R = 3;
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + dy * dy <= 6) s.grounds.set(K(s.x + dx, s.y + dy), 'dirt');
       s.feats.set(K(s.x, s.y), { t: 'dead_fire' });
-      const spots = [[1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]].sort(() => rnd() - 0.5);
+      const spots = shuffle([[1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [-2, 0], [0, 2], [0, -2]], rnd);
       s.feats.set(K(s.x + spots[0][0], s.y + spots[0][1]), { t: 'bedroll' });
       s.feats.set(K(s.x + spots[1][0], s.y + spots[1][1]), { t: 'note', n: Math.floor(rnd() * NOTES.length) });
       s.feats.set(K(s.x + spots[2][0], s.y + spots[2][1]), { t: 'chest' });
