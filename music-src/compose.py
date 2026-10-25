@@ -51,43 +51,48 @@ CHORDS = [bar for _, sec in SECTIONS for bar in sec]
 BARS = len(CHORDS)
 
 # ---------------------------------------------------------------- melody
-# One motif carries the whole tune: a long note, a quick step down, then two even steps -
-# "daaa-da dum dum" (dotted quarter, eighth, quarter, quarter). It comes back every other bar,
-# moved up or down the scale, so it's easy to remember and hum. Range stays ~A4-B5, mostly steps.
-# (beat within bar, note, length in beats) per bar; [] = rest
-def motif(a, b, c, d):
-    return [(0, a, 1.5), (1.5, b, 0.5), (2, c, 1), (3, d, 1)]
+# Simple and on the beat: only quarter, half and whole notes, built from sequences - one small
+# idea repeated a step lower (or higher) each bar, so the tune walks through the scale.
+# (beat within bar, note, length in beats) per bar
+def up(a, b, c):     # three notes stepping up: quarter, quarter, half
+    return [(0, a, 1), (1, b, 1), (2, c, 2)]
+def down(a, b, c):   # the same shape upside down
+    return [(0, a, 1), (1, b, 1), (2, c, 2)]
+def pair(a, b):      # two half notes
+    return [(0, a, 2), (2, b, 2)]
+def whole(a):
+    return [(0, a, 4)]
 
 MEL = {
-    'A': [                                   # statement and answer
-        motif('F#5', 'E5', 'D5', 'A4'),      # Dmaj9      - the motif
-        [(0, 'D5', 3)],                      # Bm7        - let it ring
-        motif('E5', 'D5', 'B4', 'D5'),       # Gmaj7#11   - the motif, a step lower
-        [(0, 'C#5', 3)],                     # A/C#       - ring
-        motif('A5', 'G5', 'F#5', 'E5'),      # D/F#       - the motif, higher
-        [(0, 'D5', 2), (2, 'B4', 1), (3, 'D5', 1)],   # Gmaj9
-        motif('E5', 'F#5', 'G5', 'F#5'),     # Em9        - turned upward, building
-        [(0, 'E5', 2), (2, 'C#5', 2)],       # Asus4 -> A - leaning back home
+    'A': [
+        up('D5', 'E5', 'F#5'),       # Dmaj9      rising idea...
+        up('C#5', 'D5', 'E5'),       # Bm7        ...a step lower
+        up('B4', 'C#5', 'D5'),       # Gmaj7#11   ...lower
+        up('A4', 'B4', 'C#5'),       # A/C#       ...lower
+        down('F#5', 'E5', 'D5'),     # D/F#       answer: falling idea...
+        down('E5', 'D5', 'C#5'),     # Gmaj9      ...a step lower
+        down('D5', 'C#5', 'B4'),     # Em9        ...lower
+        down('C#5', 'B4', 'A4'),     # Asus4->A   ...lower, leading home to D
     ],
-    "A'": [                                  # same opening, then it climbs
-        motif('F#5', 'E5', 'D5', 'A4'),
-        [(0, 'D5', 3)],
-        motif('E5', 'D5', 'B4', 'D5'),
-        [(0, 'C#5', 3)],
-        motif('A5', 'B5', 'A5', 'F#5'),      # the peak
-        [(0, 'B5', 2), (2, 'A5', 1), (3, 'F#5', 1)],
-        motif('G5', 'F#5', 'E5', 'D5'),
-        [(0, 'E5', 4)],
+    "A'": [
+        up('D5', 'E5', 'F#5'),
+        up('C#5', 'D5', 'E5'),
+        up('B4', 'C#5', 'D5'),
+        up('A4', 'B4', 'C#5'),
+        down('A5', 'G5', 'F#5'),     # the answer starts higher: the peak
+        down('G5', 'F#5', 'E5'),
+        down('F#5', 'E5', 'D5'),
+        whole('E5'),
     ],
-    'B': [                                   # the motif, remembered in minor
-        motif('D5', 'C#5', 'B4', 'A4'),      # Bm9
-        [(0, 'B4', 3)],                      # Gmaj7
-        motif('A4', 'B4', 'C#5', 'D5'),      # D/F#       - reaching up
-        [(0, 'E5', 3)],                      # Em7
-        motif('F#5', 'E5', 'D5', 'C#5'),     # Bm9
-        [(0, 'D5', 2), (2, 'B4', 2)],        # Gmaj7#11
-        motif('B4', 'A4', 'B4', 'C#5'),      # Asus2
-        [(0, 'E5', 2), (2, 'C#5', 2)],       # A
+    'B': [                           # slower: falling pairs over a stepping line
+        pair('F#5', 'D5'),           # Bm9
+        whole('B4'),                 # Gmaj7
+        pair('E5', 'C#5'),           # D/F#       pairs fall a step each time...
+        whole('A4'),                 # Em7        ...and so do the long notes
+        pair('D5', 'B4'),            # Bm9
+        whole('G4'),                 # Gmaj7#11
+        pair('B4', 'A4'),            # Asus2
+        whole('C#5'),                # A
     ],
 }
 MEL["A''"] = MEL['A']
