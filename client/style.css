@@ -215,3 +215,4 @@ input[type=range]::-moz-range-track { background: transparent; }
 .slot.cslot.out { border-color: #050303 #4a5a2a #4a5a2a #050303; }
 .cont-help { margin-top: 10px; }
 .cont-help b { color: var(--ink); font-weight: normal; }
+input::placeholder { color: #8a7a68; opacity: 1; }

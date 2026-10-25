@@ -138,8 +138,13 @@ $('name').value = localStorage.getItem('campfire.name') || '';
 // for testing; with no host (e.g. a packaged app) it falls back to a local server.
 const serverUrl = new URLSearchParams(location.search).get('server')
   || (location.host ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws` : `ws://localhost:${DEFAULT_PORT}`);
+// You need a name to gather 'round.
+const syncJoin = () => { $('join').disabled = !$('name').value.trim(); };
+$('name').addEventListener('input', syncJoin);
+syncJoin();
 $('join').onclick = () => {
-  const name = $('name').value.trim() || 'Wanderer';
+  const name = $('name').value.trim();
+  if (!name) { $('name').focus(); return; }
   localStorage.setItem('campfire.name', name);
   audio.init();
   connect(serverUrl, name);
