@@ -873,10 +873,11 @@ let menuPkAcc = 0, menuPkId = 1;
 function tickMenuScene(dt, t) {
   const w = menuSt.world;
   w.time += dt;
-  // slow drift around the camp; the fire's colour wanders through the heat tiers
-  // camera sits left of the fire so the camp frames the right side of the screen
-  menuSt.me.x = -5.5 + Math.sin(t * 0.07) * 1.6;
-  menuSt.me.y = 0.6 + Math.cos(t * 0.05) * 1.2;
+  // A fixed camera, left of the fire so the camp frames the right side of the screen. (A slow
+  // drift on the pixel grid moves in visible whole-pixel hops, so the view stays put.)
+  // The fire's colour wanders through the heat tiers.
+  menuSt.me.x = -5.5;
+  menuSt.me.y = 0.6;
   w.fire.temp = Math.max(0, 2.2 + 2.6 * Math.sin(t * 0.035));
   const phase = t % 100;
   menuSt.weather.s = phase > 70 && phase < 72 ? 'rain_warn' : phase >= 72 && phase < 92 ? 'rain' : 'clear';
