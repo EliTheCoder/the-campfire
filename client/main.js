@@ -459,6 +459,26 @@ function placeTip(tip, html) {
   tip.style.top = top / z + 'px';
 }
 
+// Crafting list: the result (what it is + its recipe), an ingredient (what you have vs need,
+// where to get it), or the Craft button.
+function craftTooltip(el) {
+  if (el.classList.contains('recipe')) {
+    const r = RECIPES.find((q) => q.id === el.querySelector('button').dataset.recipe);
+    const miss = Object.entries(r.in).filter(([i, n]) => countItem(st.inv, i) < n).map(([i, n]) => `${n - countItem(st.inv, i)} ${ITEMS[i].name}`);
+    if (r.station && !nearStation('workbench')) return RED('Needs a Workbench nearby');
+    return miss.length ? RED('Missing: ' + miss.join(', ')) : `Craft ${ITEMS[r.out[0]].name}<br>${DIM('Shift-click: craft up to 10')}`;
+  }
+  const id = el.dataset.tipItem;
+  const r = el.dataset.recipe && RECIPES.find((q) => q.id === el.dataset.recipe);
+  if (r) {
+    const html = itemTooltip({ item: id, n: r.out[1] }).replace(/<br><span class="dim">(RMB|\[)[^]*?<\/span>/g, '');
+    return `${html}<br>${DIM('Takes: ' + Object.entries(r.in).map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ') + (r.station ? ' · at a Workbench' : ''))}<br>${DIM(`[${K('help')}] wiki`)}`;
+  }
+  const have = countItem(st.inv, id), need = Number(el.dataset.need);
+  const it = ITEMS[id];
+  return `<b>${it.name}</b><br>${have >= need ? `You have ${have} (need ${need})` : RED(`You have ${have}, need ${need}`)}${it.desc ? `<br>${DIM(it.desc)}` : ''}<br>${DIM(`[${K('help')}] wiki`)}`;
+}
+
 function updateTooltip(x, y, inReach) {
   const w = st.world, tip = $('tooltip');
   // Hovering an inventory/hotbar slot takes priority over the world.
@@ -469,6 +489,9 @@ function updateTooltip(x, y, inReach) {
     if (s) placeTip(tip, itemTooltip(s)); else tip.hidden = true;
     return;
   }
+  // (disabled Craft buttons take no pointer events, so the row stands in for its button)
+  const tipEl = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('[data-tip-item], #craft-list .recipe');
+  if (tipEl) { placeTip(tip, craftTooltip(tipEl)); return; }
   if (st.uiBlocking) { tip.hidden = true; return; }
   let html = '';
   if (x === 0 && y === 0) {
@@ -825,12 +848,11 @@ function renderCraft() {
     const it = ITEMS[r.out[0]];
     const chips = Object.entries(r.in).map(([i, n]) => {
       const have = countItem(st.inv, i);
-      return `<span class="chip ${have >= n ? '' : 'miss'}" title="${ITEMS[i].name}"><img src="${iconURL[i]}">${have}/${n}</span>`;
+      return `<span class="chip ${have >= n ? '' : 'miss'}" data-tip-item="${i}" data-need="${n}"><img src="${iconURL[i]}">${have}/${n}</span>`;
     }).join('');
-    row.innerHTML = `<img src="${iconURL[r.out[0]]}" title="${it.desc ?? ''}"><div><div class="name">${it.name}${r.out[1] > 1 ? ` <span class="x">x${r.out[1]}</span>` : ''}</div><div class="ings">${chips}</div>${r.station && !bench ? '<div class="note">needs a Workbench nearby</div>' : ''}</div>`;
+    row.innerHTML = `<img src="${iconURL[r.out[0]]}" data-tip-item="${r.out[0]}" data-recipe="${r.id}"><div><div class="name" data-tip-item="${r.out[0]}" data-recipe="${r.id}">${it.name}${r.out[1] > 1 ? ` <span class="x">x${r.out[1]}</span>` : ''}</div><div class="ings">${chips}</div>${r.station && !bench ? '<div class="note">needs a Workbench nearby</div>' : ''}</div>`;
     const btn = document.createElement('button');
     btn.textContent = 'Craft';
-    btn.title = 'Shift-click to craft up to 10';
     btn.disabled = !can;
     btn.dataset.recipe = r.id;
     row.append(btn);
@@ -1044,7 +1066,8 @@ function toggleWiki() {
   if (!$('wiki-panel').hidden) { closePanel('wiki-panel'); return; }
   const slotEl = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('.slot');
   const s = slotEl && st.inv[Number(slotEl.dataset.slot)];
-  let id = s ? 'item:' + s.item : null;
+  const tipItem = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('[data-tip-item]')?.dataset.tipItem;
+  let id = s ? 'item:' + s.item : tipItem ? 'item:' + tipItem : null;
   if (!id && st.world && st.hover && !st.uiBlocking) id = wikiIdFor(st.world, st.hover.x, st.hover.y);
   openPanel('wiki-panel');
   if (id && WIKI.has(id)) showWiki(id);

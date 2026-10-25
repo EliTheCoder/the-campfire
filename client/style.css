@@ -75,7 +75,7 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); overf
 #log { position: fixed; left: 12px; bottom: 12px; width: min(420px, 40vw); display: flex; flex-direction: column; gap: 3px; pointer-events: none; }
 #log > div { padding: 3px 8px; font-size: 13px; border-width: 1px; transition: opacity 1s; }
 #chat { position: fixed; left: 12px; bottom: 12px; width: min(420px, 40vw); padding: 6px 8px; font: inherit; background: #120c0c; color: var(--ink); border: 2px solid var(--edge-hi); outline: none; }
-#tooltip { position: fixed; padding: 6px 9px; font-size: 13px; pointer-events: none; max-width: 300px; z-index: 5; }
+#tooltip { position: fixed; padding: 6px 9px; font-size: 13px; pointer-events: none; max-width: 300px; z-index: 30; /* above panels (20), below the carried stack (60) */ }
 #tooltip b { color: #ffd27a; }
 #hint-keys { position: fixed; right: 12px; bottom: 12px; font-size: 12px; color: var(--dim); text-shadow: 1px 1px 0 #000; }
 
