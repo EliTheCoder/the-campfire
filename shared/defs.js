@@ -156,7 +156,7 @@ export const FEATURES = {
   chest: { name: 'Old Chest', solid: true },
   chest_open: { name: 'Empty Chest', solid: true },
   // dead campfires
-  dead_fire: { name: 'Dead Campfire' },
+  dead_fire: { name: 'Dead Campfire', time: 1.5 }, // hold LMB to sift the ashes
   bedroll: { name: 'Abandoned Bedroll', time: 0.6 },
   note: { name: 'Scrawled Note' },
   // shrines
