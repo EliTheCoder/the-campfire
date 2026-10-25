@@ -48,7 +48,27 @@ function playerToken() {
   return t;
 }
 
+// ---------------- connection quality (HUD ping) ----------------
+// A ping every 2s; the HUD shows the smoothed round trip, and jumps straight to "lagging"
+// when the server goes quiet or a ping is overdue, so a spike shows the moment it happens.
+const net = { ping: null, sent: 0, last: 0 };
+setInterval(() => {
+  if (st.ws?.readyState !== 1 || !st.world) return;
+  if (!net.sent) { net.sent = performance.now(); send({ t: 'ping', id: net.sent }); }
+}, 2000);
+function updateNet() {
+  const el = $('net');
+  if (!st.world) { el.hidden = true; return; }
+  const now = performance.now();
+  const overdue = net.sent ? now - net.sent : 0, quiet = net.last ? now - net.last : 0;
+  const ms = Math.max(net.ping ?? 0, overdue);
+  el.hidden = net.ping == null && !overdue;
+  el.className = quiet > 1000 || ms > 300 ? 'bad' : ms > 120 ? 'ok' : 'good';
+  $('net-ms').textContent = quiet > 1000 ? `lagging ${(quiet / 1000).toFixed(1)}s` : `${Math.round(ms)} ms`;
+}
+
 function connect(url, name) {
+  net.ping = null; net.sent = 0;
   $('connect-err').textContent = 'Connecting...';
   const ws = new WebSocket(url);
   st.ws = ws;
@@ -58,7 +78,7 @@ function connect(url, name) {
     if (st.world) { log('Disconnected from server.', '#e0705a'); $('connect').hidden = false; $('hud').hidden = true; $('connect-err').textContent = 'Disconnected.'; }
     st.world = null;
   };
-  ws.onmessage = (ev) => onMsg(JSON.parse(ev.data));
+  ws.onmessage = (ev) => { net.last = performance.now(); onMsg(JSON.parse(ev.data)); };
 }
 
 function onMsg(m) {
@@ -86,6 +106,9 @@ function onMsg(m) {
       if (!localStorage.getItem('campfire.helpSeen')) { openWiki('guide:start'); localStorage.setItem('campfire.helpSeen', '1'); }
       break;
     }
+    case 'pong':
+      if (m.id === net.sent) { const rtt = performance.now() - m.id; net.ping = net.ping == null ? rtt : net.ping * 0.5 + rtt * 0.5; net.sent = 0; }
+      break;
     case 'snap': {
       const w = st.world;
       if (!w) return;
@@ -1100,6 +1123,7 @@ function updateHUD(dt) {
 
   if ((craftRefresh += dt) > 0.5 && invOpen()) { craftRefresh = 0; renderCraft(); }
   $('bottom').hidden = screenOpen(); // the inventory/container shows its own hotbar; however it was closed, bring this one back
+  updateNet();
   if (contOpen()) {
     const c = openContainer();
     if (!c || me.dead || Math.hypot(c.x + 0.5 - me.x, c.y + 0.5 - me.y) > REACH + 2) closeContainer();

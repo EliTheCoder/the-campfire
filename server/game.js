@@ -287,6 +287,7 @@ export class Game {
 
   // ---------- messages ----------
   handle(p, m) {
+    if (m.t === 'ping') { this.send(p.ws, { t: 'pong', id: m.id }); return; } // latency probe for the HUD
     if (m.t === 'restart') { if (this.over) this.reset(); return; }
     if (m.t === 'chat' && this.cheats && String(m.text).startsWith('/')) { this.cheat(p, String(m.text).slice(1).split(/\s+/)); return; }
     if (m.t === 'chat') { const text = String(m.text || '').slice(0, 200); if (text) this.broadcast({ t: 'msg', text: `${p.name}: ${text}`, c: p.color }); return; }
