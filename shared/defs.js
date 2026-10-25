@@ -68,6 +68,22 @@ export const BLUEPRINTS = {
   inferno: 'Inferno (Ember Stones)',
   crystal_forge: 'Crystal Forge',
 };
+// Where each blueprint can turn up. Chests: [blueprint, min distance from the fire]; some
+// designs only exist at one kind of place (Coal Bed in mines, Inferno and Crystal Forge on far shrines).
+export const BLUEPRINT_FINDS = {
+  ruin: [['kiln', 0], ['resin_tap', 30], ['peat_press', 40]],
+  dead_fire: [['kiln', 0], ['resin_tap', 0], ['watchfire', 40]],
+  mine: [['coal_bed', 0], ['blaze', 0]],
+};
+export const BLUEPRINT_CHEST_CHANCE = { ruin: 0.5, dead_fire: 0.4, mine: 0.45 };
+// Shrines always hold one, from the band for their distance.
+export const SHRINE_BANDS = [
+  [70, ['kiln', 'resin_tap', 'peat_press']],
+  [130, ['blaze', 'watchfire', 'peat_press', 'resin_tap']],
+  [Infinity, ['inferno', 'crystal_forge', 'watchfire', 'blaze']],
+];
+// Unread designs are this many times likelier than ones the fire already knows.
+export const NEW_BLUEPRINT_WEIGHT = 3;
 for (const [id, name] of Object.entries(BLUEPRINTS)) ITEMS['bp_' + id] = { name: 'Blueprint: ' + name, learn: id, desc: 'Right-click to read. Teaches everyone at the fire.', blueprint: true };
 
 export const BUILDINGS = {

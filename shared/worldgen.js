@@ -1,5 +1,6 @@
 import { CHUNK } from './constants.js';
 import { hash3, fbm, mulberry32 } from './rng.js';
+import { BLUEPRINT_FINDS, BLUEPRINT_CHEST_CHANCE, SHRINE_BANDS } from './defs.js';
 
 export const chunkOf = (v) => Math.floor((v + CHUNK / 2) / CHUNK);
 
@@ -24,13 +25,6 @@ export const NOTES = [
   'I left the blueprint in the chest. I hope someone with more fire than us finds it.',
   'It didn\'t go out. We let it go out. There is a difference, and it matters to me.',
   'Rot is not the end of wood. It is wood learning to burn hotter.',
-];
-
-// Blueprints offered by shrines, by distance from the fire.
-const SHRINE_BANDS = [
-  [70, ['kiln', 'resin_tap', 'peat_press']],
-  [130, ['blaze', 'watchfire', 'peat_press', 'resin_tap']],
-  [Infinity, ['coal_bed', 'inferno', 'crystal_forge', 'watchfire']],
 ];
 
 // Deterministic infinite world: same seed => same world on server and every client.
@@ -91,8 +85,8 @@ export function makeGen(seed) {
       s.R = 3;
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) s.grounds.set(K(s.x + dx, s.y + dy), 'floor');
       for (const [dx, dy] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) s.feats.set(K(s.x + dx, s.y + dy), { t: rnd() < 0.3 ? 'rubble' : 'wall' });
-      const band = SHRINE_BANDS.find(([max]) => s.d < max)[1];
-      s.blueprint = band[Math.floor(rnd() * band.length)];
+      s.band = SHRINE_BANDS.find(([max]) => s.d < max)[1];
+      s.blueprint = s.band[Math.floor(rnd() * s.band.length)];
       s.feats.set(K(s.x, s.y), { t: 'shrine' });
       s.lights.push([s.x, s.y, 2]);
     },
@@ -230,11 +224,10 @@ export function makeGen(seed) {
       else if (p < 0.94) add(dist > 60 ? 'resin' : 'peat', 1, 2);
       else if (!out.some((e) => e[0] === 'axe')) add('axe', 1, 1);
     }
-    // at most one blueprint per chest
-    const bp = (id, chance) => { if (rnd() < chance && !out.some((e) => e[0].startsWith('bp_'))) out.push(['bp_' + id, 1]); };
-    if (s?.type === 'dead_fire') { bp('watchfire', dist > 40 ? 0.25 : 0); bp('kiln', 0.2); bp('resin_tap', 0.15); }
-    else if (s?.type === 'mine') { bp('coal_bed', 0.2); bp('blaze', 0.15); }
-    else { bp('kiln', 0.35); bp('resin_tap', dist > 30 ? 0.2 : 0); bp('peat_press', dist > 40 ? 0.15 : 0); }
+    // At most one blueprint per chest. Which one is picked when it's opened (the server favours
+    // designs nobody has read yet), so loot only says whether there is one and from which pool.
+    const pool = (BLUEPRINT_FINDS[s?.type] ?? BLUEPRINT_FINDS.ruin).filter(([, min]) => dist >= min).map(([id]) => id);
+    if (pool.length && rnd() < (BLUEPRINT_CHEST_CHANCE[s?.type] ?? 0.5)) out.blueprints = pool;
     return out;
   }
 

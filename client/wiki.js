@@ -1,6 +1,6 @@
 // The in-game wiki. Item and building pages are generated from the game's definitions so the
 // numbers always match; guides and world pages are written by hand.
-import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, FIRE_STAGES, FEEDS, FUELS, FUEL_NAMES, BLUEPRINTS } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, FIRE_STAGES, FEEDS, FUELS, FUEL_NAMES, BLUEPRINTS, BLUEPRINT_FINDS, SHRINE_BANDS } from '../shared/defs.js';
 import { FIRE, TORCH, COLD_GRACE, ETERNAL_ROOT_REACH, PACKET_SPEED } from '../shared/constants.js';
 
 export function buildWiki(iconURL, keyOf) {
@@ -42,7 +42,18 @@ export function buildWiki(iconURL, keyOf) {
     heart_seed: [`Fell an ${link('world:ancient_tree', 'Ancient Tree')}.`],
     crystal_geode: [`Pry one out of a geode deep in a ${link('world:mines', 'collapsed mine')} (pickaxe).`],
   };
-  for (const id of Object.keys(BLUEPRINTS)) SOURCES['bp_' + id] = [`Found in old chests and on ${link('world:shrines', 'shrines')}.`];
+  const SITE_LINKS = { ruin: ['world:ruins', 'ruins'], dead_fire: ['world:dead_fires', 'dead campfires'], mine: ['world:mines', 'collapsed mines'] };
+  const SHRINE_WHERE = ['near', 'middle-distance', 'far'];
+  for (const id of Object.keys(BLUEPRINTS)) {
+    const where = [];
+    for (const [site, list] of Object.entries(BLUEPRINT_FINDS)) {
+      const e = list.find(([b]) => b === id);
+      if (e) where.push(`chests in ${link(...SITE_LINKS[site])}${e[1] ? ` (${e[1]}+ tiles out)` : ''}`);
+    }
+    const bands = SHRINE_BANDS.map(([, l], i) => (l.includes(id) ? SHRINE_WHERE[i] : null)).filter(Boolean);
+    if (bands.length) where.push(`${bands.join(' and ')} ${link('world:shrines', 'shrines')}`);
+    SOURCES['bp_' + id] = [`Only found in ${where.join(', ')}. Designs nobody has found yet turn up more often.`];
+  }
 
   // ---------------- guides ----------------
   const G = 'Guides';
@@ -235,10 +246,10 @@ export function buildWiki(iconURL, keyOf) {
   // ---------------- the world ----------------
   const W = 'The World';
   add('world:eternal', W, 'Eternal flames', 'torch', `<p>Found in about two thirds of ruins. It never goes out: a 7x7 of safe light anywhere in the dark, and your torches relight there.</p><p>Roots touching it grow <b>teal</b> - see ${link('guide:roots')}. Right-click it to open its cache.</p>`);
-  add('world:ruins', W, 'Ruins', 'stone', `<p>Walled stone squares with a door gap and one or two old chests. Most have an ${link('world:eternal', 'eternal flame')}; the rest have a cold brazier and an extra chest.</p><p>Chests hold sticks, logs, torches, seeds, saplings and better fuel the farther out you go - and often a blueprint.</p>`);
-  add('world:dead_fires', W, 'Dead campfires', 'charred_stick', `<p>Someone else's fire, gone out. A ring of cold stones, bedrolls, scattered sticks, a chest, and a scrawled note (right-click to read it).</p><p>Sift the ashes (hold LMB) for charcoal and charred sticks. Their chests sometimes hold the Watchfire blueprint.</p>`);
-  add('world:shrines', W, 'Shrines', 'bp_kiln', `<p>A lit stone pedestal holding one blueprint - guaranteed. Right-click to take it; the shrine stays lit, a safe place to rest.</p><p>Shrines farther out hold better designs: near ones offer the Kiln, Resin Tap or Peat Press; middle ones the Blaze, Watchfire, Press or Tap; the farthest the Coal Bed, Inferno, Crystal Forge or Watchfire.</p>`);
-  add('world:mines', W, 'Collapsed mines', 'coal', `<p>Tunnels through solid rock, pitch dark inside - bring plenty of torches and a ${item('pickaxe')}.</p><p>Coal seams (dark specks in the walls) give ${item('coal')}. Geodes at the far ends give a ${item('crystal_geode')}. There's usually a chest at a dead end. You can tunnel through cave walls with the pickaxe.</p>`);
+  add('world:ruins', W, 'Ruins', 'stone', `<p>Walled stone squares with a door gap and one or two old chests. Most have an ${link('world:eternal', 'eternal flame')}; the rest have a cold brazier and an extra chest.</p><p>Chests hold sticks, logs, torches, seeds, saplings and better fuel the farther out you go - and often a blueprint: the Kiln, or farther out the Resin Tap or Peat Press. Designs nobody has found yet are likelier, but duplicates still happen.</p>`);
+  add('world:dead_fires', W, 'Dead campfires', 'charred_stick', `<p>Someone else's fire, gone out. A ring of cold stones, bedrolls, scattered sticks, a chest, and a scrawled note (right-click to read it).</p><p>Sift the ashes (hold LMB) for charcoal and charred sticks. Their chests sometimes hold a blueprint: the Kiln, Resin Tap, or (40+ tiles out) the Watchfire.</p>`);
+  add('world:shrines', W, 'Shrines', 'bp_kiln', `<p>A lit stone pedestal holding one blueprint - guaranteed. Right-click to take it; the shrine stays lit, a safe place to rest.</p><p>Shrines farther out hold better designs: near ones offer the Kiln, Resin Tap or Peat Press; middle ones the Blaze, Watchfire, Press or Tap; the farthest the Inferno, Crystal Forge, Watchfire or Blaze. The Inferno and Crystal Forge are found nowhere else. A shrine favours a design nobody has found yet.</p>`);
+  add('world:mines', W, 'Collapsed mines', 'coal', `<p>Tunnels through solid rock, pitch dark inside - bring plenty of torches and a ${item('pickaxe')}.</p><p>Coal seams (dark specks in the walls) give ${item('coal')}. Geodes at the far ends give a ${item('crystal_geode')}. There's usually a chest at a dead end - the only place to find the Coal Bed blueprint (it can also hold the Blaze). You can tunnel through cave walls with the pickaxe.</p>`);
   add('world:groves', W, 'Ancient groves', 'glowmoss', `<p>Mossy clearings lit by patches of ${item('glowmoss')}, around an ${link('world:ancient_tree', 'Ancient Tree')}. Small oases of light in the dark.</p>`);
   add('world:ancient_tree', W, 'Ancient Tree', 'heartwood', `<p>A huge glowing tree at the heart of a grove. Fell it with an axe for 3 ${item('heartwood')}, 4 logs and a ${item('heart_seed')}.</p>`);
   add('world:nature', W, 'Trees, bushes & rocks', 'sapling', `<p><b>Trees</b>: shake by hand for sticks (three times, then bare); chop with an axe for logs. <b>Bushes</b>: leaves, sometimes a seed; they regrow, or clear a picked one away. <b>Rocks</b>: stone, three times each.</p><p>The 13x13 around the fire starts empty - everything is out in the dark.</p>`);

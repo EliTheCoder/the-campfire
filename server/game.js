@@ -1,5 +1,5 @@
 import { World, key, unkey, N4, N8, crateSlots, CRATE_SLOTS } from '../shared/world.js';
-import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, FIRE_STAGES, stackMax } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, NEW_BLUEPRINT_WEIGHT, FIRE_STAGES, stackMax } from '../shared/defs.js';
 import { NOTES } from '../shared/worldgen.js';
 import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
@@ -547,6 +547,17 @@ export class Game {
     return true;
   }
 
+  // Weighted pick that favours designs nobody has found yet (read, or carried unread), while
+  // still letting duplicates turn up.
+  pickBlueprint(pool) {
+    const held = new Set();
+    for (const q of this.players.values()) for (const s of q.inv) if (s && ITEMS[s.item]?.learn) held.add(ITEMS[s.item].learn);
+    const wt = pool.map((id) => (this.known.has(id) || held.has(id) ? 1 : NEW_BLUEPRINT_WEIGHT));
+    let r = Math.random() * wt.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < pool.length; i++) if ((r -= wt[i]) < 0) return pool[i];
+    return pool[pool.length - 1];
+  }
+
   click(p, x, y, slot, shift) {
     const w = this.world;
     const s = p.inv[slot];
@@ -599,7 +610,9 @@ export class Game {
     const f = w.getFeature(x, y);
     switch (f?.t) {
       case 'chest':
-        for (const [item, n] of w.gen.loot(x, y)) this.give(p, item, n);
+        const loot = w.gen.loot(x, y);
+        for (const [item, n] of loot) this.give(p, item, n);
+        if (loot.blueprints) this.give(p, 'bp_' + this.pickBlueprint(loot.blueprints), 1);
         this.setF(x, y, { t: 'chest_open' });
         this.fx.push(['chest', x, y]);
         this.say(`${p.name} pried open an old chest.`, '#e0c070');
@@ -609,7 +622,7 @@ export class Game {
       case 'dead_fire': this.tell(p, 'Cold ashes. Whoever kept this fire is gone.', '#a8a0a0'); return;
       case 'shrine': {
         const site = w.gen.siteAt(x, y);
-        const bp = site?.blueprint ?? 'kiln';
+        const bp = site?.band ? this.pickBlueprint(site.band) : site?.blueprint ?? 'kiln';
         this.give(p, 'bp_' + bp, 1);
         this.setF(x, y, { t: 'shrine_empty' });
         this.fx.push(['chest', x, y]);

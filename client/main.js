@@ -153,11 +153,11 @@ $('restart').onclick = () => send({ t: 'restart' });
 const DEFAULT_BINDS = {
   up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD',
   inventory: 'KeyI', craft: 'KeyC', help: 'KeyH', drop: 'KeyQ', revive: 'KeyR', chat: 'Enter',
-  graphics: 'F2', palette: 'KeyP', mute: 'KeyM', uiDown: 'Minus', uiUp: 'Equal',
+  graphics: 'F2', fullscreen: 'KeyF', palette: 'KeyP', mute: 'KeyM', uiDown: 'Minus', uiUp: 'Equal',
 };
 const BIND_NAMES = {
   up: 'Move up', left: 'Move left', down: 'Move down', right: 'Move right', inventory: 'Inventory', craft: 'Crafting',
-  help: 'Wiki', drop: 'Drop item (Shift: stack)', revive: 'Revive a friend', chat: 'Chat', graphics: 'Toggle low graphics',
+  help: 'Wiki', drop: 'Drop item (Shift: stack)', revive: 'Revive a friend', chat: 'Chat', graphics: 'Toggle low graphics', fullscreen: 'Fullscreen',
   palette: 'Palette mode', mute: 'Mute', uiDown: 'UI smaller', uiUp: 'UI larger',
 };
 const BINDS = { ...DEFAULT_BINDS };
@@ -202,6 +202,7 @@ addEventListener('keydown', (e) => {
     // main menu: Esc backs out of panels; ' and / mustn't open Firefox's Quick Find
     if (document.activeElement?.tagName !== 'INPUT' && ['Quote', 'Slash'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape') closePanel(PANELS.find((id) => !$(id).hidden));
+    if (e.code === BINDS.fullscreen && document.activeElement?.tagName !== 'INPUT') toggleFullscreen();
     return;
   }
   const chat = $('chat');
@@ -236,17 +237,23 @@ addEventListener('keydown', (e) => {
     const open = PANELS.filter((id) => !$(id).hidden);
     const sub = open.find((id) => $(id).dataset.back);
     if (sub) closePanel(sub);
-    else if (open.length && !(open.length === 1 && open[0] === 'menu-panel')) for (const id of PANELS) $(id).hidden = true;
+    else if (open.length && !(open.length === 1 && open[0] === 'menu-panel')) { for (const id of PANELS) $(id).hidden = true; cursor = null; drag = null; audio.play('close', { vol: 0.45 }); }
     else toggle('menu-panel');
   }
   if (c === BINDS.drop) send({ t: 'drop', slot: st.sel, all: e.shiftKey, x: st.hover?.x, y: st.hover?.y });
   if (c === BINDS.revive) send({ t: 'revive' });
   if (c === BINDS.graphics) { e.preventDefault(); R.setLow(!R.low); log(`Graphics: ${R.low ? 'low (2D, fastest)' : 'full (WebGL effects)'}. [${K('graphics')}] to switch.`, '#aaa'); }
+  if (c === BINDS.fullscreen) toggleFullscreen();
   if (c === BINDS.palette) { R.palette = !R.palette; log(`Palette mode ${R.palette ? 'on' : 'off'}.`, '#aaa'); }
   st.uiBlocking = PANELS.some((id) => !$(id).hidden);
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouse.l = false; });
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  else document.documentElement.requestFullscreen?.().catch(() => {});
+}
 
 function toggle(id) {
   const el = $(id);
