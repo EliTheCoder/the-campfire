@@ -52,7 +52,7 @@ function connect(url, name) {
   const ws = new WebSocket(url);
   st.ws = ws;
   ws.onopen = () => send({ t: 'join', name, token: playerToken() });
-  ws.onerror = () => { $('connect-err').textContent = `Couldn't reach ${url}. Is the server running?`; };
+  ws.onerror = () => { $('connect-err').textContent = "Couldn't reach the game server. Is it running?"; };
   ws.onclose = () => {
     if (st.world) { log('Disconnected from server.', '#e0705a'); $('connect').hidden = false; $('hud').hidden = true; $('connect-err').textContent = 'Disconnected.'; }
     st.world = null;
@@ -132,17 +132,17 @@ function onMsg(m) {
 
 // ---------------- connect screen ----------------
 $('name').value = localStorage.getItem('campfire.name') || '';
-const defaultServer = location.host ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws` : `ws://localhost:${DEFAULT_PORT}`;
-$('server').value = (location.protocol !== 'https:' && localStorage.getItem('campfire.server')) || defaultServer;
+// The game server lives at the same address as the page (/ws). ?server=ws://... overrides it
+// for testing; with no host (e.g. a packaged app) it falls back to a local server.
+const serverUrl = new URLSearchParams(location.search).get('server')
+  || (location.host ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws` : `ws://localhost:${DEFAULT_PORT}`);
 $('join').onclick = () => {
   const name = $('name').value.trim() || 'Wanderer';
-  const url = $('server').value.trim();
   localStorage.setItem('campfire.name', name);
-  localStorage.setItem('campfire.server', url);
   audio.init();
-  connect(url, name);
+  connect(serverUrl, name);
 };
-for (const id of ['name', 'server']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join').click(); });
+$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join').click(); });
 $('restart').onclick = () => send({ t: 'restart' });
 
 // ---------------- input ----------------
