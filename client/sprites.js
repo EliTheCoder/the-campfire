@@ -183,6 +183,14 @@ export function makeSprites() {
     blob(g, 8, 9, 7.5, 6, ['#6e6b78', '#5a5764', '#46434d', '#2c2a32'], rnd, 0.1);
     blob(g, 8, 9.5, 5.2, 4, ['#4a3a1e', '#3a2c16', '#2a2010', '#1a140a'], rnd, 0.2);
   });
+  // Rain Basin: a stone bowl; the water inside is drawn at runtime by how full it is.
+  S.bld.rain_basin = mk(16, 16, (g) => {
+    const rnd = mulberry32(14);
+    blob(g, 8, 10, 7.5, 5.5, ['#9a98a6', '#7a7886', '#5a5866', '#2c2a34'], rnd, 0.08);
+    blob(g, 8, 9.5, 5, 3.4, ['#2a2832', '#24222c', '#1c1a22', '#3a3844'], rnd, 0);
+    g.r(3, 13, 2, 1, '#46444e'); g.r(11, 14, 2, 1, '#46444e');
+    for (const [x, y] of [[2, 9], [13, 10], [6, 14]]) g.p(x, y, '#b0aebc');
+  });
   S.bld.kiln = mk(16, 16, (g) => {
     const rnd = mulberry32(13);
     blob(g, 8, 9, 7, 7, ['#8a7a70', '#6e6058', '#54483f', '#2e2622'], rnd, 0.1);
@@ -323,6 +331,7 @@ export function makeSprites() {
     g.p(14, 3, '#ffd27a');
   });
   S.icon.rot_pit = S.bld.rot_pit;
+  S.icon.rain_basin = S.bld.rain_basin;
   S.icon.hearth = S.bld.hearth;
   S.icon.brick = S.bld.brick;
   S.icon.kiln = mk(16, 16, (g) => { g.ctx.drawImage(S.bld.kiln, 0, 0); g.r(6, 10, 4, 3, '#e0601f'); g.r(7, 11, 2, 1, '#ffd27a'); });

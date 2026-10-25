@@ -601,6 +601,11 @@ function buildingInfo(w, b, x, y) {
       const feeders = n ? AMBER(`Fed by ${n} Kindling Bush${n > 1 ? 'es' : ''} beside it`) : DIM('Plant Kindling Seeds right beside it and they feed it leaves');
       return `Leaves: ${b.in}/20 ${DIM('(RMB: open)')}<br>Rotting: ${pct(b.p)}<br>${feeders}<br>${feeding() ?? link}${outStr(b)}`;
     }
+    case 'rain_basin': {
+      const wl = b.wl || 0;
+      const state = w.ground(x, y) === 'cave' ? RED('No rain reaches it under a cave roof') : wl > 0 ? `Settling stone: ${pct(b.p)}` : DIM('Dry. Waiting for rain');
+      return `Water: ${pct(wl)}<br>${state}<br>${link}${outStr(b)}`;
+    }
     case 'resin_tap': return (b.on ? 'Dripping resin' : RED('Needs a grown grove tree or heart tree beside it')) + `<br>${link}${outStr(b)}`;
     case 'glowmoss': return 'A faint 3x3 light.' + DIM('<br>Ring a Heartwood Seed with 8 of these to grow a Heart Grove.');
     case 'hearth': case 'fire_brick': case 'ember_stone': {

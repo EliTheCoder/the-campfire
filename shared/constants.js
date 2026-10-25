@@ -32,6 +32,9 @@ export const TORCH = {
   heldRainMult: 1.6,
 };
 
+// Rain Basin: rain fills it (0..1), and while it holds water the silt settles into stone.
+export const BASIN = { fillPerSec: 1 / 30, stoneEvery: 15, waterPerStone: 0.25 };
+
 export const ETERNAL_RADIUS = 3;
 export const COLD_GRACE = 6; // seconds in the dark without light before death
 export const REACH = 3.5;

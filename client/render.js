@@ -9,7 +9,7 @@ import { drawFlame, lerpPalette, ETERNAL_PALETTE, FLAME_PALETTES } from './sprit
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 const TORCH_PAL = FLAME_PALETTES[1];
 // Buildings a root visibly plugs into: ones that take heat or send output down roots.
-const ROOT_USERS = new Set(['torch', 'kindling', 'sapling', 'rot_pit', 'resin_tap', 'kiln', 'press', 'coal_bed', 'forge_core', 'watchfire', 'heart_seed']);
+const ROOT_USERS = new Set(['torch', 'kindling', 'sapling', 'rot_pit', 'rain_basin', 'resin_tap', 'kiln', 'press', 'coal_bed', 'forge_core', 'watchfire', 'heart_seed']);
 function ROOT_LINKS(w, b, x, y) {
   if (ROOT_USERS.has(b.t)) return true;
   const c = w.mbCoreFor(x, y); // a wall block of a multiblock that uses heat or sends output
@@ -194,8 +194,10 @@ export function createRenderer(glCanvas, overlay, S) {
   }
 
   // ---------- main draw ----------
+  let raining = false; // for building details (basin ripples)
   R.draw = (st, dt, t) => {
     const w = st.world;
+    raining = st.weather?.s === 'rain';
     const me = st.me;
     R.shake = Math.max(0, R.shake - dt);
     R.flash = Math.max(0, R.flash - dt * 1.5);
@@ -583,6 +585,20 @@ export function createRenderer(glCanvas, overlay, S) {
       }
       case 'kindling': sc.drawImage(S.bld.kindling[b.g < 0.4 ? 0 : b.g < 1 ? 1 : 2], px, py); outIcon(b, px, py, t); drawFeedLinks(w, b, x, y, t); break;
       case 'sapling': sc.drawImage(S.bld.sapling[b.g < 1 ? 0 : 1], px, py - 4); outIcon(b, px, py - 4, t); drawFeedLinks(w, b, x, y, t); break;
+      case 'rain_basin': {
+        sc.drawImage(S.bld.rain_basin, px, py);
+        const wl = b.wl || 0;
+        if (wl > 0) {
+          // water rises in the bowl; rings while it rains, a speck of silt sinking otherwise
+          const rows = Math.max(1, Math.round(wl * 4));
+          for (let i = 0; i < rows; i++) { const half = [2, 4, 4, 4][i]; sc.fillStyle = i === rows - 1 ? '#6aa8d8' : '#3a6a98'; sc.fillRect(px + 8 - half, py + 11 - i, half * 2, 1); }
+          const sy = py + 12 - rows;
+          if (raining) { const ph = (t * 2 + x * 0.37 + y * 0.61) % 1; if (ph < 0.5) { sc.fillStyle = '#b8e0ff'; sc.fillRect(px + 5 + ((x * 5 + Math.floor(t * 2)) % 6), sy, 1, 1); } }
+          else { sc.fillStyle = '#8a8070'; sc.fillRect(px + 7 + (x % 2), sy + Math.round(((t * 0.5 + x) % 1) * (rows - 1)), 1, 1); }
+        }
+        outIcon(b, px, py, t);
+        break;
+      }
       case 'rot_pit': {
         sc.drawImage(S.bld.rot_pit, px, py);
         if (b.in > 0) {

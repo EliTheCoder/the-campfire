@@ -1,7 +1,7 @@
 import { World, key, unkey, N4, N8, crateSlots, CRATE_SLOTS } from '../shared/world.js';
 import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, NEW_BLUEPRINT_WEIGHT, FIRE_STAGES, stackMax } from '../shared/defs.js';
 import { NOTES } from '../shared/worldgen.js';
-import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR } from '../shared/constants.js';
+import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR, BASIN } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
 
 const OUT_CAP = 8;
@@ -15,6 +15,7 @@ function newBuilding(t) {
     case 'kindling': return { t, g: 0, p: 0, out: {} };
     case 'sapling': return { t, g: 0, p: 0, q: 0, out: {} };
     case 'rot_pit': return { t, in: 0, p: 0, out: {} };
+    case 'rain_basin': return { t, wl: 0, p: 0, out: {} };
     case 'resin_tap': return { t, p: 0, out: {} };
     case 'crate': return { t, slots: new Array(CRATE_SLOTS).fill(null) };
     case 'heart_seed': return { t, g: 0, in: 0, p: 0, out: {}, ok: false };
@@ -885,6 +886,13 @@ export class Game {
         case 'rot_pit':
           if (b.in >= 4 && (b.p += dt / (rain ? 10 : 20)) >= 1) { b.p = 0; b.in -= 4; addOut(b, 'peat'); }
           break;
+        case 'rain_basin': {
+          // rain fills it (not under a cave roof); stone settles out while there's water
+          if (rain && w.ground(x, y) !== 'cave') b.wl = Math.min(1, (b.wl || 0) + dt * BASIN.fillPerSec);
+          b.on = b.wl > 0;
+          if (b.on && (b.p += dt / BASIN.stoneEvery) >= 1) { b.p = 0; b.wl = Math.max(0, b.wl - BASIN.waterPerStone); addOut(b, 'stone'); }
+          break;
+        }
         case 'resin_tap': {
           // Drips from a living grove tree or (a bit faster) a heart tree beside it. A tree's flow
           // is shared by every tap on it, so ringing one tree with taps gains nothing.
