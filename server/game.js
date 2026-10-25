@@ -1,5 +1,6 @@
 import { World, key, unkey, N4, N8 } from '../shared/world.js';
-import { ITEMS, BUILDINGS, FEATURES, RECIPES } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, FIRE_STAGES } from '../shared/defs.js';
+import { NOTES } from '../shared/worldgen.js';
 import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
 
@@ -14,8 +15,10 @@ function newBuilding(t) {
     case 'kindling': return { t, g: 0, p: 0, out: {} };
     case 'sapling': return { t, g: 0, p: 0, q: 0, out: {} };
     case 'rot_pit': return { t, in: 0, p: 0, out: {} };
-    case 'kiln': return { t, in: 0, p: 0, out: {}, ok: false, conn: false };
-    default: return { t };
+    case 'resin_tap': return { t, p: 0, out: {} };
+    case 'heart_seed': return { t, g: 0, p: 0, out: {}, ok: false };
+    case 'watchfire': return { t, ok: false, lit: false };
+    default: return MULTIBLOCKS[t] ? { t, in: 0, p: 0, out: {}, ok: false } : { t };
   }
 }
 
@@ -208,7 +211,7 @@ export class Game {
     const w = this.world, f = w.fire;
     const diff = f.demand - fu.heat;
     const v = fu.value * (diff > 0 ? Math.pow(FIRE.belowHeatPenalty, diff) : 1);
-    w.setFuel(Math.min(FIRE.maxFuel, f.fuel + v));
+    w.setFuel(Math.min(w.maxFuel(), f.fuel + v));
     f.temp += (fu.heat - f.temp) * Math.min(0.5, fu.value / 150);
     this.fx.push(['feed', item, diff > 0 ? 1 : 0]);
     return true;
@@ -265,16 +268,21 @@ export class Game {
       case 'fuel': this.world.setFuel(Number(a)); break;
       case 'time': this.world.time = Number(a) * 60; break;
       case 'tp': p.x = Number(a) + 0.5; p.y = Number(b) + 0.5; this.send(p.ws, { t: 'tp', x: p.x, y: p.y }); break;
-      case 'ruin': {
+      case 'site': case 'ruin': {
+        // /site [ruin|eternal|dead_fire|shrine|mine|grove]: teleport to the nearest one
+        const want = cmd === 'ruin' ? (a === 'eternal' ? 'eternal' : 'ruin') : a;
         let best = null;
-        for (let cy = -5; cy <= 5; cy++) for (let cx = -5; cx <= 5; cx++) {
-          const r = this.world.gen.ruin(cx, cy);
-          if (r && (a !== 'eternal' || r.eternal) && (!best || Math.hypot(r.x, r.y) < Math.hypot(best.x, best.y))) best = r;
+        for (let cy = -8; cy <= 8; cy++) for (let cx = -8; cx <= 8; cx++) {
+          const st = this.world.gen.site(cx, cy);
+          if (!st) continue;
+          const ok = !want || st.type === want || (want === 'eternal' && st.type === 'ruin' && st.eternal);
+          if (ok && (!best || st.d < best.d)) best = st;
         }
-        if (best) { p.x = best.x + 0.5; p.y = best.y + 1.5; this.send(p.ws, { t: 'tp', x: p.x, y: p.y }); }
+        if (best) { p.x = best.x + 0.5; p.y = best.y + best.R + 1.5; this.send(p.ws, { t: 'tp', x: p.x, y: p.y }); this.tell(p, `${best.type} at ${best.x},${best.y}${best.blueprint ? ' (' + best.blueprint + ')' : ''}`); }
         break;
       }
-      default: this.tell(p, 'cheats: /give item n, /weather rain|wind|clear, /fuel n, /time min, /tp x y, /ruin [eternal]');
+      case 'learn': for (const id of Object.keys(BLUEPRINTS)) this.known.add(id); this.broadcast({ t: 'known', known: [...this.known] }); break;
+      default: this.tell(p, 'cheats: /give item n, /weather rain|wind|clear, /fuel n, /time min, /tp x y, /site [type], /learn');
     }
   }
 
@@ -294,20 +302,24 @@ export class Game {
       this.fx.push(['break', x, y]);
       return;
     }
-    // A finished kiln is one structure: breaking any part of it breaks all of it.
-    const core = b?.t === 'kiln' ? [x, y, b] : b?.t === 'brick' ? this.findKilnCore(x, y) : null;
-    if (core && core[2].ok) { this.shatterKiln(core[0], core[1], core[2]); return; }
+    // A fused multiblock is one structure: breaking any part of it breaks all of it.
+    const core = b && w.mbCoreFor(x, y);
+    if (core && core[2].ok && MULTIBLOCKS[core[2].t].fuse) { this.shatter(core[0], core[1], core[2]); return; }
     if (b) {
       this.give(p, BUILDINGS[b.t].item, 1);
       for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.give(p, it, n);
-      if (b.in) this.give(p, b.t === 'kiln' ? 'log' : 'leaf', b.in);
+      const inItem = b.t === 'rot_pit' ? 'leaf' : MULTIBLOCKS[b.t]?.in?.[0];
+      if (b.in && inItem) this.give(p, inItem, b.in);
       this.setB(x, y, null);
       this.fx.push(['break', x, y]);
       return;
     }
     const f = w.getFeature(x, y);
     if (!f) return;
-    const axe = countItem(p.inv, 'axe') > 0;
+    const has = (t) => countItem(p.inv, t) > 0;
+    const need = FEATURES[f.t]?.tool;
+    if (need && !has(need)) { this.tell(p, `You need a ${ITEMS[need].name} for that.`); return; }
+    const axe = has('axe');
     const rnd = Math.random();
     switch (f.t) {
       case 'tree':
@@ -331,11 +343,30 @@ export class Game {
         break;
       case 'rock': {
         const n = (f.n ?? 3) - 1;
-        this.give(p, 'stone', 2);
+        this.give(p, 'stone', has('pickaxe') ? 3 : 2);
         this.setF(x, y, n <= 0 ? null : { t: 'rock', n });
         break;
       }
       case 'rubble': this.give(p, 'stone', 1); this.setF(x, y, null); break;
+      case 'cave_wall': this.give(p, 'stone', 1); this.setF(x, y, null); break;
+      case 'coal_seam': {
+        const n = (f.n ?? 3) - 1;
+        this.give(p, 'coal', rnd < 0.4 ? 2 : 1);
+        this.setF(x, y, n <= 0 ? null : { t: 'coal_seam', n });
+        break;
+      }
+      case 'geode':
+        this.give(p, 'crystal_geode', 1); this.setF(x, y, null);
+        this.say(`${p.name} pried a Crystal Geode out of the rock!`, '#ff9ad8');
+        break;
+      case 'ancient_tree':
+        this.give(p, 'heartwood', 3); this.give(p, 'log', 4); this.give(p, 'heart_seed', 1);
+        this.setF(x, y, { t: 'ancient_stump' });
+        this.say(`${p.name} felled an Ancient Tree. Its heart is still warm.`, '#9fe8a8');
+        break;
+      case 'glowmoss': this.give(p, 'glowmoss', 1); this.setF(x, y, null); break;
+      case 'bedroll': this.give(p, 'leaf', 3); this.give(p, 'stick', 1); this.setF(x, y, null); break;
+      case 'dead_fire': this.give(p, 'charcoal', 1); this.give(p, 'charred_stick', 2); this.setF(x, y, { t: 'rubble' }); break;
       default:
         if (FEATURES[f.t]?.loose) { this.give(p, FEATURES[f.t].loose, 1); this.setF(x, y, null); }
         else return;
@@ -343,21 +374,28 @@ export class Game {
     this.fx.push(['harvest', x, y, f.t]);
   }
 
-  shatterKiln(x, y, b) {
-    for (const [dx, dy] of N8) { this.setB(x + dx, y + dy, null); this.addDrop(x + dx, y + dy, 'brick', 1); }
+  shatter(x, y, b) {
+    const w = this.world, m = MULTIBLOCKS[b.t];
+    for (const [tx, ty] of w.mbTiles(x, y, b.t)) {
+      if (tx === x && ty === y) continue;
+      this.setB(tx, ty, null);
+      this.addDrop(tx, ty, m.wall, 1);
+    }
     this.setB(x, y, null);
-    this.addDrop(x, y, 'kiln', 1);
-    if (b.in) this.addDrop(x, y, 'log', b.in);
+    this.addDrop(x, y, BUILDINGS[b.t].item, 1);
+    if (b.in && m.in) this.addDrop(x, y, m.in[0], b.in);
     for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.addDrop(x, y, it, n);
-    this.fx.push(['shatter', x, y]);
+    this.fx.push(['shatter', x, y, m.size]);
   }
 
-  findKilnCore(x, y) {
-    for (const [dx, dy] of N8) {
-      const b = this.world.getB(x + dx, y + dy);
-      if (b?.t === 'kiln') return [x + dx, y + dy, b];
-    }
-    return null;
+  storeEternal(x, y, item, n = 1) {
+    const f = this.world.getFeature(x, y);
+    const store = { ...(f?.store || {}) };
+    const total = Object.values(store).reduce((a, v) => a + v, 0);
+    if (total >= 300) return false;
+    store[item] = (store[item] || 0) + n;
+    this.setF(x, y, { t: 'eternal', store });
+    return true;
   }
 
   click(p, x, y, slot, shift) {
@@ -370,7 +408,7 @@ export class Game {
       if (!this.known.has(it.learn)) {
         this.known.add(it.learn);
         this.broadcast({ t: 'known', known: [...this.known] });
-        this.say(`${p.name} deciphered a blueprint: ${ITEMS[it.learn].name}! (Workbench)`, '#9fd8ff');
+        this.say(`${p.name} deciphered a blueprint: ${BLUEPRINTS[it.learn]}! (Workbench)`, '#ffd27a');
       } else this.tell(p, 'Everyone already knows this one.');
       removeItem(p.inv, s.item, 1); p.invDirty = true;
       return;
@@ -378,6 +416,7 @@ export class Game {
 
     if (x === 0 && y === 0) {
       if (!it?.fuel) { this.tell(p, s ? "That won't burn." : 'Select fuel in your hotbar, then right-click the fire.'); return; }
+      if (w.fire.fuel >= w.maxFuel() - 1) { this.tell(p, `The ${FIRE_STAGES[w.stage()].name} can't hold any more. Grow it to hold more.`, '#ffb070'); return; }
       const n = shift ? s.n : 1;
       const item = s.item;
       for (let i = 0; i < n; i++) this.feedFire(item);
@@ -389,7 +428,8 @@ export class Game {
 
     let b = w.getB(x, y);
     if (b) {
-      if (b.t === 'brick') { const core = this.findKilnCore(x, y); if (core) { [x, y, b] = core; } }
+      const core = w.mbCoreFor(x, y);
+      if (core) [x, y, b] = core;
       const amt = (cap, have) => Math.max(0, Math.min(shift ? s.n : 1, cap - have));
       if (b.t === 'torch' && it?.fuel) {
         b.fuel = Math.min(TORCH.placedFuel, b.fuel + it.fuel.value * 2);
@@ -398,14 +438,10 @@ export class Game {
         this.dB.add(key(x, y));
         return;
       }
-      if (b.t === 'rot_pit' && s?.item === 'leaf') {
-        const n = amt(20, b.in);
-        if (n) { b.in += n; removeItem(p.inv, 'leaf', n); p.invDirty = true; }
-        return;
-      }
-      if (b.t === 'kiln' && s?.item === 'log') {
-        const n = amt(10, b.in);
-        if (n) { b.in += n; removeItem(p.inv, 'log', n); p.invDirty = true; }
+      const inSpec = b.t === 'rot_pit' ? ['leaf', 20] : MULTIBLOCKS[b.t]?.in;
+      if (inSpec && s?.item === inSpec[0]) {
+        const n = amt(inSpec[1], b.in);
+        if (n) { b.in += n; removeItem(p.inv, s.item, n); p.invDirty = true; }
         return;
       }
       if (b.out && Object.values(b.out).some((n) => n > 0)) {
@@ -417,14 +453,35 @@ export class Game {
     }
 
     const f = w.getFeature(x, y);
-    if (f?.t === 'chest') {
-      for (const [item, n] of w.gen.loot(x, y)) this.give(p, item, n);
-      this.setF(x, y, { t: 'chest_open' });
-      this.fx.push(['chest', x, y]);
-      this.say(`${p.name} pried open an old chest.`, '#e0c070');
-      return;
+    switch (f?.t) {
+      case 'chest':
+        for (const [item, n] of w.gen.loot(x, y)) this.give(p, item, n);
+        this.setF(x, y, { t: 'chest_open' });
+        this.fx.push(['chest', x, y]);
+        this.say(`${p.name} pried open an old chest.`, '#e0c070');
+        return;
+      case 'eternal': {
+        const store = f.store && Object.entries(f.store).filter(([, n]) => n > 0);
+        if (store?.length) {
+          for (const [item, n] of store) this.give(p, item, n);
+          this.setF(x, y, { t: 'eternal' });
+          this.tell(p, `You gather what the teal roots brought in: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}.`, '#9fe8d8');
+        } else this.tell(p, 'The eternal flame. It never goes out.', '#9fe8d8');
+        return;
+      }
+      case 'note': this.tell(p, `"${NOTES[f.n ?? 0]}"`, '#d8c8a8'); return;
+      case 'dead_fire': this.tell(p, 'Cold ashes. Whoever kept this fire is gone.', '#a8a0a0'); return;
+      case 'shrine': {
+        const site = w.gen.siteAt(x, y);
+        const bp = site?.blueprint ?? 'kiln';
+        this.give(p, 'bp_' + bp, 1);
+        this.setF(x, y, { t: 'shrine_empty' });
+        this.fx.push(['chest', x, y]);
+        this.say(`${p.name} took a blueprint from a shrine: ${BLUEPRINTS[bp]}.`, '#ffd27a');
+        return;
+      }
+      case 'shrine_empty': this.tell(p, 'The pedestal is bare now.'); return;
     }
-    if (f?.t === 'eternal') { this.tell(p, 'The eternal flame. It never goes out.', '#9fe8d8'); return; }
     if (it?.place) this.place(p, x, y, s);
   }
 
@@ -440,7 +497,16 @@ export class Game {
         if (q.x + PLAYER_HALF > x && q.x - PLAYER_HALF < x + 1 && q.y + PLAYER_HALF > y && q.y - PLAYER_HALF < y + 1) { this.tell(p, 'Someone is standing there.'); return; }
       }
     }
-    if ((type === 'kindling' || type === 'sapling') && w.ground(x, y) === 'floor') { this.tell(p, 'Nothing grows on stone.'); return; }
+    if (type === 'root') {
+      // The campfire's (orange) and eternal flames' (teal) networks never mix.
+      const nets = [...w.netsAround(x, y)];
+      const eternals = nets.filter((n) => n !== 'fire');
+      if ((nets.includes('fire') && eternals.length) || eternals.length > 1) {
+        this.tell(p, 'Those roots carry different flames. Orange and teal roots can never meet.', '#9fe8d8');
+        return;
+      }
+    }
+    if ((type === 'kindling' || type === 'sapling' || type === 'heart_seed') && ['floor', 'cave'].includes(w.ground(x, y))) { this.tell(p, 'Nothing grows on stone.'); return; }
     if (f) { this.give(p, FEATURES[f.t].loose, 1); this.setF(x, y, null); }
     const b = newBuilding(type);
     if (type === 'torch' && p.lit && countItem(p.inv, 'torch') === 1) { b.fuel = TORCH.placedFuel * (1 - p.burn / TORCH.heldFuel); p.burn = 0; }
@@ -484,7 +550,8 @@ export class Game {
       const f = w.fire, min = w.time / 60;
       f.demand = Math.min(FIRE.maxDemand, Math.floor(min / FIRE.demandEveryMin));
       f.temp += (Math.min(1, f.temp) - f.temp) * dt * 0.004;
-      const base = FIRE.baseBurn * (1 + min * FIRE.hungerPerMin) * (1 - 0.08 * w.hearthCount())
+      // It never stops getting hungrier: linear growth times a slow exponential.
+      const base = FIRE.baseBurn * (1 + min * FIRE.hungerPerMin) * Math.pow(FIRE.hungerGrowth, min)
         * (rain ? FIRE.rainMult : 1) * (f.temp >= f.demand + 1 ? FIRE.hotBonus : 1);
 
       this.tickPlayers(dt, rain);
@@ -492,7 +559,7 @@ export class Game {
       this.tickBuildings(dt, rain);
       this.tickPackets(dt);
       f.burn = base + this.draw / dt;
-      w.setFuel(f.fuel - base * dt - this.draw);
+      w.setFuel(Math.min(w.maxFuel(), f.fuel - base * dt - this.draw));
       if (f.fuel <= 0) this.gameOver();
     }
     if (++this.tickN % SNAP_EVERY === 0) this.snapshot();
@@ -587,36 +654,31 @@ export class Game {
     } else this.autoRevive = 0;
   }
 
-  // Where a building can hand things off: its 4 neighbours (kilns use the edge of their 3x3).
-  outlets(x, y, b) {
-    if (b.t !== 'kiln') return N4.map(([dx, dy]) => [x + dx, y + dy, x, y]);
-    const out = [];
-    for (let i = -1; i <= 1; i++) {
-      out.push([x + i, y - 2, x + i, y - 1], [x + i, y + 2, x + i, y + 1], [x - 2, y + i, x - 1, y + i], [x + 2, y + i, x + 1, y + i]);
-    }
-    return out;
-  }
-
+  // Hand an item onward: a neighbouring machine that takes it, else straight into a flame it
+  // touches, else down the best powered root (orange roots only carry fuel to the fire; teal
+  // roots carry anything to their eternal flame's cache).
   deliver(x, y, b, item) {
     const w = this.world;
-    const outs = this.outlets(x, y, b);
+    const outs = w.outlets(x, y, b);
     for (const [nx, ny, ox, oy] of outs) {
-      let nb = w.getB(nx, ny);
-      if (nb?.t === 'brick') nb = this.findKilnCore(nx, ny)?.[2];
-      if (!nb || nb === b) continue;
-      if ((nb.t === 'rot_pit' && item === 'leaf' && nb.in < 20) || (nb.t === 'kiln' && item === 'log' && nb.in < 10)) {
-        nb.in++;
-        this.fx.push(['hop', ox, oy, nx, ny, item]);
-        return true;
-      }
+      const c = w.mbCoreFor(nx, ny) ?? (w.getB(nx, ny) ? [nx, ny, w.getB(nx, ny)] : null);
+      if (!c || c[2] === b) continue;
+      const cb = c[2], m = MULTIBLOCKS[cb.t];
+      const ok = (cb.t === 'rot_pit' && item === 'leaf' && cb.in < 20) || (m?.in?.[0] === item && cb.ok && cb.in < m.in[1]);
+      if (ok) { cb.in++; this.fx.push(['hop', ox, oy, nx, ny, item]); return true; }
     }
-    if (!ITEMS[item].fuel) return false;
-    for (const [nx, ny] of outs) if (nx === 0 && ny === 0 && w.fire.fuel > 0) { this.feedFire(item); return true; }
+    const fuel = !!ITEMS[item].fuel;
+    for (const [nx, ny] of outs) {
+      const n = w.rootNodeAt(nx, ny);
+      if (n?.d === 0 && n.net === 'fire' && fuel && w.fire.fuel > 0) { this.feedFire(item); return true; }
+      if (n?.d === 0 && n.net !== 'fire' && this.storeEternal(nx, ny, item)) return true;
+      if (!n && w.getFeature(nx, ny)?.t === 'eternal' && this.storeEternal(nx, ny, item)) return true;
+    }
     let best = null, bd = Infinity;
     for (const [nx, ny, ox, oy] of outs) {
-      if (!w.rootPowered(nx, ny)) continue;
-      const d = w.rootDistAt(nx, ny);
-      if (d < bd) { bd = d; best = [nx, ny, ox, oy]; }
+      const n = w.rootNodeAt(nx, ny);
+      if (!n || n.d === 0 || !w.rootPowered(nx, ny) || (n.net === 'fire' && !fuel)) continue;
+      if (n.d < bd) { bd = n.d; best = [nx, ny, ox, oy]; }
     }
     if (!best) return false;
     this.packets.push({ id: this.packetId++, x: best[2], y: best[3], nx: best[0], ny: best[1], p: 0, item });
@@ -634,14 +696,15 @@ export class Game {
       const [x, y] = unkey(k);
       switch (b.t) {
         case 'torch': {
-          const conn = w.connected(x, y);
+          const net = w.connected(x, y);
           const wasLit = b.fuel > 0;
-          if (conn) {
+          if (net) {
             b.fuel = TORCH.placedFuel;
-            this.draw += dt * TORCH.networkCost * (rain ? TORCH.rainMult : 1);
+            if (net === 'fire') this.draw += dt * TORCH.networkCost * (rain ? TORCH.rainMult : 1);
           } else if (b.fuel > 0) b.fuel = Math.max(0, b.fuel - dt * (rain ? TORCH.rainMult : 1));
           if (wasLit !== b.fuel > 0) w.lightDirty = true;
-          b.conn = conn;
+          b.conn = !!net;
+          b.net = net ? (net === 'fire' ? 'f' : 'e') : '';
           break;
         }
         case 'root':
@@ -665,16 +728,22 @@ export class Game {
         case 'rot_pit':
           if (b.in >= 4 && (b.p += dt / (rain ? 10 : 20)) >= 1) { b.p = 0; b.in -= 4; addOut(b, 'peat'); }
           break;
-        case 'kiln': {
-          const was = b.ok;
-          b.ok = w.kilnComplete(x, y);
-          if (b.ok && !was) { this.fx.push(['forge', x, y]); this.say('The bricks fuse into a Charcoal Kiln!', '#ffb070'); }
-          b.conn = b.ok && this.outlets(x, y, b).some(([nx, ny]) => w.rootPowered(nx, ny) || (nx === 0 && ny === 0 && w.fire.fuel > 0));
-          if (b.ok && b.conn && b.in >= 2) {
-            this.draw += dt * 0.25;
-            if ((b.p += dt / 15) >= 1) { b.p = 0; b.in -= 2; addOut(b, 'charcoal'); }
+        case 'resin_tap': {
+          // drips from a living grove tree or (twice as fast) a heart tree beside it
+          let rate = 0;
+          for (const [dx, dy] of N4) {
+            const nb = w.getB(x + dx, y + dy);
+            if (nb?.t === 'sapling' && nb.g >= 1) rate = Math.max(rate, 1 / 30);
+            const c = w.mbCoreFor(x + dx, y + dy);
+            if (c?.[2].t === 'heart_seed' && c[2].ok && c[2].g >= 1) rate = 1 / 15;
           }
+          b.on = rate > 0;
+          if (rate && (b.p += dt * rate * (rain ? 1.5 : 1)) >= 1) { b.p = 0; addOut(b, 'resin'); }
           break;
+        }
+        default: {
+          const m = MULTIBLOCKS[b.t];
+          if (m) this.tickMultiblock(x, y, b, m, dt, grow, addOut);
         }
       }
       if (b.out) {
@@ -690,6 +759,34 @@ export class Game {
     }
   }
 
+  tickMultiblock(x, y, b, m, dt, grow, addOut) {
+    const w = this.world;
+    const was = b.ok;
+    b.ok = w.mbComplete(x, y, b.t);
+    if (b.ok && !was) {
+      this.fx.push(['forge', x, y, m.size]);
+      this.say(`The ${BUILDINGS[b.t].name} takes shape!`, '#ffb070');
+    }
+    const net = b.ok && m.heat ? w.heatNet(w.mbTiles(x, y, b.t)) : null;
+    b.net = net ? (net === 'fire' ? 'f' : 'e') : '';
+    b.on = false;
+    if (m.make && b.ok && (!m.heat || net) && b.in >= m.make[0]) {
+      b.on = true;
+      if (net === 'fire') this.draw += dt * m.draw;
+      if ((b.p += dt / m.make[2]) >= 1) { b.p = 0; b.in -= m.make[0]; addOut(b, m.make[1]); }
+    }
+    if (m.grows && b.ok) {
+      b.on = true;
+      if (b.g < 1) b.g = Math.min(1, b.g + dt / m.growTime * grow);
+      else if ((b.p += dt / m.grows[1] * grow) >= 1) { b.p = 0; addOut(b, m.grows[0]); }
+    }
+    if (m.light) {
+      const lit = b.ok && !!net;
+      if (lit !== !!b.lit) { b.lit = lit; w.lightDirty = true; }
+      if (lit && net === 'fire') this.draw += dt * m.draw;
+    }
+  }
+
   tickPackets(dt) {
     const w = this.world;
     const keep = [];
@@ -699,11 +796,17 @@ export class Game {
       while (pk.p >= 1) {
         pk.p -= 1;
         pk.x = pk.nx; pk.y = pk.ny;
-        if (pk.x === 0 && pk.y === 0) { this.feedFire(pk.item); alive = false; break; }
-        const d = w.rootDistAt(pk.x, pk.y);
-        if (d === undefined || !w.rootPowered(pk.x, pk.y)) { this.addDrop(pk.x, pk.y, pk.item, 1); alive = false; break; }
-        if (d === 1) { pk.nx = 0; pk.ny = 0; continue; }
-        const next = N4.find(([dx, dy]) => w.rootDistAt(pk.x + dx, pk.y + dy) === d - 1);
+        const n = w.rootNodeAt(pk.x, pk.y);
+        if (n?.d === 0) {
+          // reached the source: the campfire (or its ring) or an eternal flame's cache
+          if (n.net === 'fire') { if (ITEMS[pk.item].fuel) this.feedFire(pk.item); }
+          else if (!this.storeEternal(pk.x, pk.y, pk.item)) this.addDrop(pk.x, pk.y, pk.item, 1);
+          alive = false;
+          break;
+        }
+        if (!n || !w.rootPowered(pk.x, pk.y)) { this.addDrop(pk.x, pk.y, pk.item, 1); alive = false; break; }
+        const next = N4.find(([dx, dy]) => { const m = w.rootNodeAt(pk.x + dx, pk.y + dy); return m && m.net === n.net && m.d < n.d; });
+        if (!next) { this.addDrop(pk.x, pk.y, pk.item, 1); alive = false; break; }
         pk.nx = pk.x + next[0]; pk.ny = pk.y + next[1];
       }
       if (alive) keep.push(pk);

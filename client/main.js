@@ -1,5 +1,5 @@
 import { World, unkey } from '../shared/world.js';
-import { ITEMS, BUILDINGS, FEATURES, RECIPES } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, FIRE_STAGES, FEEDS, FUEL_NAMES, BLUEPRINTS } from '../shared/defs.js';
 import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_SPEED, PLAYER_HALF, PACKET_SPEED, DEFAULT_PORT, HOTBAR, FIRE_TIERS } from '../shared/constants.js';
 import { countItem, hasAll } from '../shared/inventory.js';
 import { makeSprites, FLAME_PALETTES } from './sprites.js';
@@ -301,14 +301,17 @@ function move(dt) {
 }
 
 // ---------------- harvest / hover ----------------
+const hasTool = (t) => countItem(st.inv, t) > 0;
 function harvestTime(w, x, y) {
   const b = w.getB(x, y);
-  if (b) return 0.6;
+  if (b) return MULTIBLOCKS[b.t] || w.formedCoreAt(x, y) ? 1.0 : 0.6;
   const f = w.getFeature(x, y);
   if (!f) return 0;
   const d = FEATURES[f.t];
   if (d.loose) return 0.25;
-  if (f.t === 'tree' && countItem(st.inv, 'axe')) return 1.1;
+  if (d.tool && !hasTool(d.tool)) return 0;
+  if (f.t === 'tree' && hasTool('axe')) return 1.1;
+  if (f.t === 'rock' && hasTool('pickaxe')) return 0.7;
   return d.time || 0;
 }
 
@@ -329,19 +332,18 @@ function updateHover(dt) {
   updateTooltip(tx, ty, inReach);
 }
 
-const HEAT_NAMES = ['Leaves', 'Sticks', 'Logs', 'Peat', 'Charcoal'];
 function itemTooltip(s) {
   const it = ITEMS[s.item];
   let html = `<b>${it.name}</b>${s.n > 1 ? ` <span class="dim">x${s.n}</span>` : ''}`;
   if (it.desc) html += `<br>${it.desc}`;
   if (it.fuel) {
     const demand = st.world.fire.demand;
-    html += `<br><span style="color:#ffb070">Fuel ${it.fuel.value} · heat tier ${it.fuel.heat + 1} (${HEAT_NAMES[it.fuel.heat]})</span>`;
+    html += `<br><span style="color:#ffb070">Fuel ${it.fuel.value} · heat tier ${it.fuel.heat + 1} (${FUEL_NAMES[it.fuel.heat]})</span>`;
     if (it.fuel.heat < demand) html += `<br><span style="color:#e0705a">Too weak for the fire right now - mostly ash</span>`;
     html += '<br><span class="dim">RMB the fire to feed (Ctrl: whole stack)</span>';
   }
   if (it.place) html += '<br><span class="dim">RMB a tile to place</span>';
-  if (it.learn) html += '<br><span class="dim">RMB anywhere to read</span>';
+  if (it.learn) html += `<br><span class="dim">RMB anywhere to read${st.known.has(it.learn) ? ' (already known)' : ''}</span>`;
   return html;
 }
 
@@ -367,21 +369,22 @@ function updateTooltip(x, y, inReach) {
   }
   if (st.uiBlocking) { tip.hidden = true; return; }
   let html = '';
-  const lit = w.sharedLit(x, y);
   if (x === 0 && y === 0) {
-    html = `<b>The Campfire</b><br>RMB with fuel: feed it (Ctrl: whole stack)`;
+    const stg = w.stage(), next = FIRE_STAGES[stg + 1];
+    html = `<b>The ${FIRE_STAGES[stg].name}</b><br>RMB with fuel: feed it (Ctrl: whole stack)<br>Holds ${w.maxFuel()} fuel · lights ${w.fireRadius() * 2 + 1}x${w.fireRadius() * 2 + 1}`;
+    if (next) html += `<br><span class="dim">Grow it into a ${next.name}: ring it with ${next.ring * 8} ${ITEMS[next.block].name}s${next.ring > 1 ? ' (outside the ' + FIRE_STAGES[stg].name + ' ring)' : ''}</span>`;
   } else {
     const b = w.getB(x, y);
     const f = w.getFeature(x, y);
     const d = w.drops.get(`${x},${y}`);
-    const kilnPart = b?.t === 'brick' ? formedKilnCore(w, x, y) : null;
-    if (kilnPart) html = `<b>Charcoal Kiln</b><br>${buildingInfo(w, kilnPart[2], kilnPart[0], kilnPart[1])}`;
-    else if (b) html = `<b>${BUILDINGS[b.t].name}</b><br>${buildingInfo(w, b, x, y)}${b.t === 'kiln' && b.ok ? '' : '<br><span class="dim">Hold LMB: pick up</span>'}`;
-    else if (f) html = `<b>${FEATURES[f.t].name}</b>${featureHint(f)}`;
+    const core = b && w.formedCoreAt(x, y);
+    if (core && core[2] !== b) html = `<b>${BUILDINGS[core[2].t].name}</b><br>${buildingInfo(w, core[2], core[0], core[1])}`;
+    else if (b) html = `<b>${BUILDINGS[b.t].name}</b><br>${buildingInfo(w, b, x, y)}${MULTIBLOCKS[b.t] && b.ok ? '' : '<br><span class="dim">Hold LMB: pick up</span>'}`;
+    else if (f) html = `<b>${FEATURES[f.t].name}</b>${featureHint(w, f, x, y)}`;
     else if (d?.length) html = `<b>Dropped items</b><br>${d.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}<br><span class="dim">Walk over to pick up</span>`;
     else {
       const sel = st.inv[st.sel], it = sel && ITEMS[sel.item];
-      if ((it?.place === 'kindling' || it?.place === 'sapling') && w.ground(x, y) !== 'water') html = `<span class="dim">RMB: plant ${it.name}</span>${placeHint(w, it.place, x, y)}`;
+      if (it?.place && FEEDS[it.place] && w.ground(x, y) !== 'water') html = `<span class="dim">RMB: place ${it.name}</span>${placeHint(w, it.place, x, y)}`;
     }
   }
   if (!html) { tip.hidden = true; return; }
@@ -390,38 +393,54 @@ function updateTooltip(x, y, inReach) {
 }
 
 const AMBER = (s) => `<span style="color:#ffb070">${s}</span>`;
-function formedKilnCore(w, x, y) {
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const c = w.getB(x + dx, y + dy); if (c?.t === 'kiln' && c.ok) return [x + dx, y + dy, c]; }
-  return null;
-}
-// Preview what a building would connect to if placed here.
+const TEAL = (s) => `<span style="color:#7af0d8">${s}</span>`;
+const RED = (s) => `<span style="color:#e0705a">${s}</span>`;
+const DIM = (s) => `<span class="dim">${s}</span>`;
+const nameOf = (t) => BUILDINGS[t]?.name ?? t;
+// Preview what a building would feed if placed here.
 function placeHint(w, type, x, y) {
-  const t = w.feedTargets(x, y, type);
-  if (t.length) return '<br>' + AMBER(type === 'kindling' ? 'Will feed its leaves to the Rot Pit beside it' : 'Will feed its logs to the Kiln beside it');
-  if (type === 'kindling' || type === 'sapling') return `<br><span class="dim">Tip: plant it right beside a ${type === 'kindling' ? 'Rot Pit' : 'Kiln'} to feed it automatically</span>`;
-  return '';
+  const want = FEEDS[type];
+  if (w.feedTargets(x, y, type).length) return '<br>' + AMBER(`Will feed the ${nameOf(want)} beside it`);
+  return '<br>' + DIM(`Tip: place it right beside a ${nameOf(want)} to feed it automatically`);
 }
+// Producers feeding this building (via its edge for multiblocks).
 function countFeeders(w, x, y, b) {
-  const ring = [];
-  if (b.t === 'kiln') for (let i = -1; i <= 1; i++) ring.push([x + i, y - 2], [x + i, y + 2], [x - 2, y + i], [x + 2, y + i]);
-  else for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ring.push([x + dx, y + dy]);
-  const want = b.t === 'kiln' ? 'sapling' : 'kindling';
-  return ring.filter(([px, py]) => w.getB(px, py)?.t === want).length;
+  const seen = new Set();
+  for (const [nx, ny] of w.outlets(x, y, b)) {
+    const c = w.mbCoreFor(nx, ny) ?? (w.getB(nx, ny) ? [nx, ny, w.getB(nx, ny)] : null);
+    if (c && FEEDS[c[2].t] === b.t) seen.add(c[2]);
+  }
+  return seen.size;
 }
+const FEEDER_OF = Object.fromEntries(Object.entries(FEEDS).map(([a, b]) => [b, a]));
 
-function featureHint(f) {
-  const axe = countItem(st.inv, 'axe') > 0;
+function featureHint(w, f, x, y) {
+  const axe = hasTool('axe'), pick = hasTool('pickaxe');
   switch (f.t) {
-    case 'tree': return axe ? '<br>Hold LMB: chop for logs' : '<br>Hold LMB: shake for sticks<br><span class="dim">An axe would get logs.</span>';
-    case 'bare_tree': return axe ? '<br>Hold LMB: chop for logs' : '<br><span class="dim">Needs an axe.</span>';
+    case 'tree': return axe ? '<br>Hold LMB: chop for logs' : '<br>Hold LMB: shake for sticks<br>' + DIM('An axe would get logs.');
+    case 'bare_tree': return axe ? '<br>Hold LMB: chop for logs' : '<br>' + DIM('Needs an axe.');
     case 'stump': return '<br>Hold LMB: pry up a stick';
     case 'bush': return '<br>Hold LMB: gather leaves';
-    case 'picked_bush': return '<br><span class="dim">Regrowing...</span><br>Hold LMB: clear it away';
-    case 'rock': return '<br>Hold LMB: gather stone';
+    case 'picked_bush': return '<br>' + DIM('Regrowing...') + '<br>Hold LMB: clear it away';
+    case 'rock': return '<br>Hold LMB: gather stone' + (pick ? '' : '<br>' + DIM('A pickaxe gets more, faster.'));
     case 'rubble': return '<br>Hold LMB: gather stone';
     case 'chest': return '<br>RMB: open';
-    case 'eternal': return '<br>It never goes out.';
-    case 'brazier': return '<br><span class="dim">Cold and dead.</span>';
+    case 'eternal': {
+      const store = Object.entries(f.store || {}).filter(([, n]) => n > 0);
+      return '<br>It never goes out.' + (store.length ? '<br>' + TEAL(`Cache: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}`) + '<br>RMB: collect it all' : '<br>' + DIM('Ember roots touching it grow teal. Machines on teal roots send their output here.'));
+    }
+    case 'brazier': return '<br>' + DIM('Cold and dead.');
+    case 'dead_fire': return '<br>' + DIM('Someone else\'s fire. It went out.') + '<br>Hold LMB: sift the ashes';
+    case 'bedroll': return '<br>Hold LMB: scavenge it';
+    case 'note': return '<br>RMB: read';
+    case 'shrine': return '<br>A blueprint rests on the pedestal.<br>RMB: take it';
+    case 'shrine_empty': return '<br>' + DIM('The pedestal is bare.');
+    case 'cave_wall': return pick ? '<br>Hold LMB: mine it' : '<br>' + DIM('Needs a pickaxe.');
+    case 'coal_seam': return pick ? '<br>Hold LMB: mine coal' : '<br>' + RED('Needs a pickaxe.');
+    case 'geode': return pick ? '<br>Hold LMB: pry out the geode' : '<br>' + RED('Needs a pickaxe.');
+    case 'ancient_tree': return axe ? '<br>Hold LMB: fell it (heartwood + a Heartwood Seed)' : '<br>' + RED('Needs an axe.');
+    case 'ancient_stump': return '<br>' + DIM('Its heart has been taken.');
+    case 'glowmoss': return '<br>Hold LMB: gather it';
     default: return FEATURES[f.t].loose ? '<br>Walk over or hold LMB to pick up' : '';
   }
 }
@@ -429,40 +448,68 @@ function featureHint(f) {
 function pct(v) { return Math.round(v * 100) + '%'; }
 function outStr(b) {
   const e = Object.entries(b.out || {}).filter(([, n]) => n > 0);
-  return e.length ? `<br>Holding: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')} <span class="dim">(RMB: take)</span>` : '';
+  return e.length ? `<br>Holding: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')} ${DIM('(RMB: take)')}` : '';
+}
+function netLabel(net) {
+  return net === 'fire' ? AMBER('Connected to the campfire') : net ? TEAL('Connected to an eternal flame (output goes to its cache)') : null;
 }
 function buildingInfo(w, b, x, y) {
-  const conn = w.connected(x, y);
-  const link = conn ? '<span style="color:#ffb070">Connected to the fire</span>'
-    : '<span class="dim">Not connected: needs an ember root directly beside it (up/down/left/right). Output stays here.</span>';
+  const net = w.connected(x, y);
+  const link = netLabel(net) ?? DIM('Not connected: needs an ember root directly beside it (up/down/left/right). Output stays here.');
+  const feeding = () => { const t = w.feedTargets(x, y, b.t); return t.length ? AMBER(`Feeding the ${nameOf(t[0][2].t)} beside it`) : null; };
   switch (b.t) {
-    case 'torch': return b.fuel > 0 ? (b.conn ? 'Fed by the roots - burns forever' : `Fuel: ${Math.ceil(b.fuel)}s <span class="dim">(RMB with fuel to top up)</span>`) : 'Burnt out. RMB with fuel to relight, or pick up the charred stick.';
-    case 'root':
+    case 'torch': return b.fuel > 0 ? (b.conn ? (b.net === 'e' ? 'Fed by teal roots - burns forever' : 'Fed by the roots - burns forever') : `Fuel: ${Math.ceil(b.fuel)}s ${DIM('(RMB with fuel to top up)')}`) : 'Burnt out. RMB with fuel to relight, or pick up the charred stick.';
+    case 'root': {
+      const node = w.rootNodeAt(x, y);
       if (b.g < 1) return `Growing... ${pct(b.g)}`;
-      if (w.rootPowered(x, y)) return 'Glowing with the fire\'s heat';
-      if (w.rootDistAt(x, y) === undefined) return '<span style="color:#e0705a">Not connected - link it back to the fire with more roots</span>';
-      return '<span style="color:#e0705a">Dark - the fire is too weak to reach this far</span>';
+      if (w.rootPowered(x, y)) return node.net === 'fire' ? 'Glowing with the campfire\'s heat' : TEAL('Glowing with an eternal flame\'s heat');
+      if (!node) return RED('Not connected - link it back to the fire or an eternal flame');
+      return RED('Dark - the fire is too weak to reach this far');
+    }
     case 'kindling': case 'sapling': {
       const grow = b.g < 1 ? `Growing ${pct(b.g)} (needs light)` : b.t === 'kindling' ? 'Sheds leaves' : 'Sheds sticks and the odd log';
-      const feeds = w.feedTargets(x, y, b.t).length;
-      const fed = feeds ? AMBER(b.t === 'kindling' ? 'Feeding its leaves to the Rot Pit beside it' : 'Feeding its logs to the Kiln beside it') : '';
+      const fed = feeding();
       return grow + '<br>' + (fed ? fed + (b.t === 'sapling' ? '<br>' + link : '') : link) + outStr(b);
     }
     case 'rot_pit': {
       const n = countFeeders(w, x, y, b);
-      const feeders = n ? AMBER(`Fed by ${n} Kindling Bush${n > 1 ? 'es' : ''} beside it`) : '<span class="dim">Plant Kindling Seeds right beside it and they feed it leaves</span>';
-      return `Leaves: ${b.in}/20 <span class="dim">(RMB with leaves)</span><br>Rotting: ${pct(b.p)}<br>${feeders}<br>${link}${outStr(b)}`;
+      const feeders = n ? AMBER(`Fed by ${n} Kindling Bush${n > 1 ? 'es' : ''} beside it`) : DIM('Plant Kindling Seeds right beside it and they feed it leaves');
+      return `Leaves: ${b.in}/20 ${DIM('(RMB with leaves)')}<br>Rotting: ${pct(b.p)}<br>${feeders}<br>${feeding() ?? link}${outStr(b)}`;
     }
-    case 'kiln': {
-      if (!b.ok) { let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && w.getB(x + dx, y + dy)?.t !== 'brick') n++; return AMBER(`Needs ${n} more Stone Brick${n > 1 ? 's' : ''} around it`) + '<br><span class="dim">Hold LMB: pick up</span>'; }
-      const n = countFeeders(w, x, y, b);
-      const feeders = n ? AMBER(`Fed by ${n} Grove Tree${n > 1 ? 's' : ''} beside its walls`) : '<span class="dim">Plant Saplings beside its walls and they feed it logs</span>';
-      return `Logs: ${b.in}/10 <span class="dim">(RMB with logs)</span><br>${b.conn ? `Baking: ${pct(b.p)}` : '<span style="color:#e0705a">Needs an ember root touching its walls</span>'}<br>${feeders}${outStr(b)}<br><span class="dim">Hold LMB: break it (drops all its bricks)</span>`;
+    case 'resin_tap': return (b.on ? 'Dripping resin' : RED('Needs a grown grove tree or heart tree beside it')) + `<br>${link}${outStr(b)}`;
+    case 'glowmoss': return 'A faint 3x3 light.' + DIM('<br>Ring a Heartwood Seed with 8 of these to grow a Heart Grove.');
+    case 'hearth': case 'fire_brick': case 'ember_stone': {
+      const ringOf = FIRE_STAGES.find((f) => f.block === b.t);
+      const onRing = ringOf && Math.max(Math.abs(x), Math.abs(y)) === ringOf.ring;
+      let s = onRing ? (w.stage() >= FIRE_STAGES.indexOf(ringOf) ? AMBER(`Part of the ${ringOf.name} ring`) : `Part of an unfinished ${ringOf.name} ring`) : DIM(`${ringOf.ring * 8} of these ${ringOf.ring} tile${ringOf.ring > 1 ? 's' : ''} from the fire make it a ${ringOf.name}`);
+      const core = b.t === 'fire_brick' && w.mbCoreFor(x, y);
+      if (core) s = `Part of a ${nameOf(core[2].t)} wall`;
+      return s;
     }
-    case 'hearth': return Math.max(Math.abs(x), Math.abs(y)) <= 1 ? 'Holding heat in: the fire burns slower' : '<span class="dim">Must touch the campfire</span>';
     case 'workbench': return 'Stand nearby to craft advanced things';
-    case 'brick': return 'Part of a kiln wall';
   }
+  const m = MULTIBLOCKS[b.t];
+  if (m) {
+    if (!b.ok) {
+      const missing = w.mbTiles(x, y, b.t).filter(([tx, ty]) => (tx !== x || ty !== y) && w.getB(tx, ty)?.t !== m.wall).length;
+      return AMBER(`Needs ${missing} more ${ITEMS[m.wall].name}${missing > 1 ? 's' : ''} around it (${m.size}x${m.size})`);
+    }
+    const lines = [];
+    if (m.in) lines.push(`${ITEMS[m.in[0]].name}: ${b.in}/${m.in[1]} ${DIM(`(RMB with ${ITEMS[m.in[0]].name.toLowerCase()})`)}`);
+    if (m.make) lines.push(b.on ? `Making ${ITEMS[m.make[1]].name}: ${pct(b.p)}` : m.heat && !b.net ? RED('Needs an ember root touching its walls') : DIM(`Waiting for ${m.make[0]} ${ITEMS[m.in[0]].name.toLowerCase()}`));
+    if (m.grows) lines.push(b.g < 1 ? `Growing ${pct(b.g)}` : `Growing ${ITEMS[m.grows[0]].name}: ${pct(b.p)}`);
+    if (m.light) lines.push(b.lit ? `Lighting ${m.light * 2 + 1}x${m.light * 2 + 1} for everyone` : RED('Needs an ember root touching its walls to burn'));
+    if (m.heat && b.net) lines.push(b.net === 'e' ? TEAL('Heated by an eternal flame (free)') : AMBER(`Heated by the campfire (costs ${m.draw}/s)`));
+    const feederType = FEEDER_OF[b.t];
+    if (feederType) { const n = countFeeders(w, x, y, b); lines.push(n ? AMBER(`Fed by ${n} ${nameOf(feederType)}${n > 1 ? 's' : ''} beside it`) : DIM(`A ${nameOf(feederType)} placed beside it will feed it automatically`)); }
+    const fed = feeding();
+    if (fed) lines.push(fed);
+    else if (m.make || m.grows) lines.push(netLabel(w.heatNet(w.mbTiles(x, y, b.t))) ?? DIM('Put an ember root beside it to send its output away'));
+    if (m.fuse) lines.push(DIM('Hold LMB: break it (drops every block)'));
+    return lines.join('<br>') + outStr(b);
+  }
+  const wallOf = w.mbCoreFor(x, y);
+  if (wallOf && wallOf[2] !== b) return `Part of a ${nameOf(wallOf[2].t)} wall`;
   return '';
 }
 
@@ -519,7 +566,8 @@ function renderCraft() {
     row.append(btn);
     list.append(row);
   }
-  if (!st.known.has('kiln')) list.insertAdjacentHTML('beforeend', '<p class="small dim">Some designs were lost to the dark. Search ruins for blueprints.</p>');
+  const unknown = Object.keys(BLUEPRINTS).filter((id) => !st.known.has(id)).length;
+  if (unknown) list.insertAdjacentHTML('beforeend', `<p class="small dim">${unknown} design${unknown > 1 ? 's' : ''} still lost to the dark. Search ruins, dead campfires, mines and shrines for blueprints - the best lie farthest out.</p>`);
 }
 
 // Pixel-art scrollbar for a .scroll element inside a panel (native bars can't be styled in Firefox).
@@ -611,10 +659,10 @@ function log(text, c = '#ddd') {
 let craftRefresh = 0;
 function updateHUD(dt) {
   const w = st.world, f = w.fire, me = st.me;
-  const ratio = Math.max(0, Math.min(1, f.fuel / FIRE.maxFuel));
-  const tier = Math.max(0, Math.min(4, Math.round(f.temp)));
+  const ratio = Math.max(0, Math.min(1, f.fuel / w.maxFuel()));
+  const tier = Math.max(0, Math.min(FLAME_PALETTES.length - 1, Math.round(f.temp)));
   const pal = FLAME_PALETTES[tier];
-  $('fire-tier').textContent = f.fuel > 0 ? FIRE_TIERS[tier] : 'Out';
+  $('fire-tier').textContent = f.fuel > 0 ? `${FIRE_STAGES[w.stage()].name} · ${FIRE_TIERS[tier]}` : 'Out';
   $('fire-tier').style.color = pal[1];
   $('fire-time').textContent = fmtTime(w.time);
   const fill = $('fuel-fill');
@@ -622,9 +670,9 @@ function updateHUD(dt) {
   fill.style.background = `linear-gradient(${pal[0]}, ${pal[2]})`;
   fill.style.boxShadow = `0 0 12px ${pal[1]}`;
   const left = f.burn > 0 ? f.fuel / f.burn : 0;
-  $('fuel-text').textContent = `${Math.ceil(f.fuel)} / ${FIRE.maxFuel}  ·  ~${fmtTime(left)} left`;
+  $('fuel-text').textContent = `${Math.ceil(f.fuel)} / ${w.maxFuel()}  ·  ~${fmtTime(left)} left`;
   $('fire-burn').textContent = `Burning ${f.burn.toFixed(2)}/s`;
-  const needed = ['Leaves', 'Sticks', 'Logs', 'Peat', 'Charcoal'][f.demand];
+  const needed = FUEL_NAMES[f.demand];
   const de = $('fire-demand');
   de.textContent = f.demand > 0 ? `Hungry for ${needed}+` : 'Anything burns';
   de.className = f.demand > 0 ? 'warn' : '';
@@ -674,12 +722,13 @@ function burnTorchesLocally(dt) {
 function updateAudio(dt) {
   const w = st.world, me = st.me;
   audio.listener.x = me.x; audio.listener.y = me.y;
-  const r = w.fire.fuel / FIRE.maxFuel;
+  const r = w.fire.fuel / w.maxFuel();
   const fireStage = w.fire.fuel <= 0 ? -1 : r < 0.08 ? 0 : r < 0.25 ? 1 : r < 0.5 ? 2 : r < 0.8 ? 3 : 4;
   let eternalDist = 99;
   for (let cy = chunkOf(me.y) - 1; cy <= chunkOf(me.y) + 1; cy++) for (let cx = chunkOf(me.x) - 1; cx <= chunkOf(me.x) + 1; cx++) {
-    const ru = w.gen.ruin(cx, cy);
-    if (ru?.eternal) eternalDist = Math.min(eternalDist, Math.hypot(ru.x + 0.5 - me.x, ru.y + 0.5 - me.y));
+    const site = w.gen.site(cx, cy);
+    // eternal flames, shrines and glowmoss all hum softly
+    if (site) for (const [lx, ly] of w.siteLights(site)) eternalDist = Math.min(eternalDist, Math.hypot(lx + 0.5 - me.x, ly + 0.5 - me.y));
   }
   let torchDist = 99;
   for (const [k, b] of w.bld) {

@@ -1,5 +1,5 @@
-import { TILE, FIRE, TORCH, ETERNAL_RADIUS, REACH } from '../shared/constants.js';
-import { FEATURES, BUILDINGS, ITEMS } from '../shared/defs.js';
+import { TILE, TORCH, REACH } from '../shared/constants.js';
+import { FEATURES, BUILDINGS, ITEMS, MULTIBLOCKS, FIRE_STAGES } from '../shared/defs.js';
 import { hash3 } from '../shared/rng.js';
 import { key, N4, N8 } from '../shared/world.js';
 import { chunkOf } from '../shared/worldgen.js';
@@ -8,6 +8,9 @@ import { drawFlame, lerpPalette, ETERNAL_PALETTE, FLAME_PALETTES } from './sprit
 
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 const TORCH_PAL = FLAME_PALETTES[1];
+const TEAL_PAL = ['#f0fff8', '#8af5d8', '#2ab8a8', '#16606a'];
+// light colours for natural lights, by the feature that makes them
+const SITE_LIGHT = { eternal: ['#8af5d8', 4.5, 0.7, 0.82], shrine: ['#ffd27a', 3.2, 0.5, 0.72], glowmoss: ['#6af0b0', 1.8, 0.28, 0.5], ancient_tree: ['#7af0a0', 3.5, 0.4, 0.55] };
 
 export function createRenderer(glCanvas, overlay, S) {
   const scene = document.createElement('canvas');
@@ -125,8 +128,7 @@ export function createRenderer(glCanvas, overlay, S) {
   function emitAmbient(st, dt, t, view) {
     const w = st.world;
     const fuel = w.fire.fuel;
-    const ratio = Math.min(1, fuel / FIRE.maxFuel);
-    const stage = fireStage(fuel);
+    const stage = fireStage(w);
     const pal = lerpPalette(w.fire.temp);
     const wind = st.weather.s === 'wind' ? 50 : 0;
     // fire embers + smoke
@@ -142,13 +144,18 @@ export function createRenderer(glCanvas, overlay, S) {
       if (x < view.x0 || x > view.x1 || y < view.y0 || y > view.y1) continue;
       if (Math.random() < 1.5 * dt) P({ x: x * 16 + 8 + (Math.random() - 0.5) * 3, y: y * 16 + 2, vx: (Math.random() - 0.5) * 8 + wind * 0.5, vy: -15 - Math.random() * 15, life: 0.6 + Math.random(), col: TORCH_PAL[1 + ((Math.random() * 2) | 0)], emit: true });
     }
-    for (const r of view.ruins) {
-      if (!r.eternal) continue;
-      if (Math.random() < 4 * dt) {
-        const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 40;
-        P({ x: r.x * 16 + 8 + Math.cos(a) * d, y: r.y * 16 + 8 + Math.sin(a) * d, vx: (Math.random() - 0.5) * 6, vy: -4 - Math.random() * 6, life: 2 + Math.random() * 2, col: ETERNAL_PALETTE[(Math.random() * 3) | 0], emit: true, wobble: Math.random() * 9, wobbleAmt: 10 });
+    for (const [lx, ly, , kind] of view.siteLights) {
+      if (kind === 'eternal') {
+        if (Math.random() < 4 * dt) {
+          const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 40;
+          P({ x: lx * 16 + 8 + Math.cos(a) * d, y: ly * 16 + 8 + Math.sin(a) * d, vx: (Math.random() - 0.5) * 6, vy: -4 - Math.random() * 6, life: 2 + Math.random() * 2, col: ETERNAL_PALETTE[(Math.random() * 3) | 0], emit: true, wobble: Math.random() * 9, wobbleAmt: 10 });
+        }
+        if (Math.random() < 3 * dt) P({ x: lx * 16 + 8 + (Math.random() - 0.5) * 6, y: ly * 16 - 2, vy: -20 - Math.random() * 20, life: 0.7 + Math.random(), col: ETERNAL_PALETTE[1], emit: true });
+      } else if (kind === 'shrine') {
+        if (Math.random() < 2 * dt) P({ x: lx * 16 + 8 + (Math.random() - 0.5) * 10, y: ly * 16 + 2, vy: -8 - Math.random() * 8, life: 1.5 + Math.random(), col: Math.random() < 0.5 ? '#ffd27a' : '#fff6d8', emit: true, wobble: Math.random() * 9, wobbleAmt: 8 });
+      } else if (Math.random() < 0.5 * dt) {
+        P({ x: lx * 16 + 4 + Math.random() * 8, y: ly * 16 + 8 + Math.random() * 6, vy: -4 - Math.random() * 4, life: 2 + Math.random() * 2, col: '#8affc8', emit: true, wobble: Math.random() * 9, wobbleAmt: 6 });
       }
-      if (Math.random() < 3 * dt) P({ x: r.x * 16 + 8 + (Math.random() - 0.5) * 6, y: r.y * 16 - 2, vy: -20 - Math.random() * 20, life: 0.7 + Math.random(), col: ETERNAL_PALETTE[1], emit: true });
     }
     // rain
     if (st.weather.s === 'rain') {
@@ -182,9 +189,12 @@ export function createRenderer(glCanvas, overlay, S) {
     const camX = R.camX, camY = R.camY;
     const x0 = Math.floor(camX / TILE) - 1, y0 = Math.floor(camY / TILE) - 2;
     const x1 = Math.ceil((camX + R.W) / TILE) + 1, y1 = Math.ceil((camY + R.H) / TILE) + 2;
-    const ruins = [];
-    for (let cy = chunkOf(y0) - 1; cy <= chunkOf(y1) + 1; cy++) for (let cx = chunkOf(x0) - 1; cx <= chunkOf(x1) + 1; cx++) { const r = w.gen.ruin(cx, cy); if (r) ruins.push(r); }
-    const view = { x0, y0, x1, y1, ruins };
+    const siteLights = [];
+    for (let cy = chunkOf(y0) - 1; cy <= chunkOf(y1) + 1; cy++) for (let cx = chunkOf(x0) - 1; cx <= chunkOf(x1) + 1; cx++) {
+      const s = w.gen.site(cx, cy);
+      if (s) for (const [lx, ly, r] of w.siteLights(s)) siteLights.push([lx, ly, r, w.getFeature(lx, ly).t]);
+    }
+    const view = { x0, y0, x1, y1, siteLights };
 
     emitAmbient(st, dt, t, view);
     updateParticles(dt);
@@ -234,7 +244,7 @@ export function createRenderer(glCanvas, overlay, S) {
         const f = w.getFeature(x, y);
         if (f) drawFeature(w, f, x, y, t);
         const b = w.getB(x, y);
-        if (b && b.t !== 'root' && !(b.t === 'brick' && formedKilnAt(w, x, y))) drawBuilding(w, b, x, y, t);
+        if (b && b.t !== 'root' && !fusedWallAt(w, b, x, y)) drawBuilding(w, b, x, y, t);
       }
       for (const p of living) if (Math.floor(p.ry + 0.3) === y) drawPlayer(st, p, t);
     }
@@ -281,8 +291,8 @@ export function createRenderer(glCanvas, overlay, S) {
     const flick = (s) => 0.97 + 0.02 * Math.sin(t * 11 + s) + 0.01 * Math.sin(t * 23 + s * 3);
     const fuel = w.fire.fuel;
     if (fuel > 0) {
-      const ratio = Math.min(1, fuel / FIRE.maxFuel);
-      sq(0, 0, FIRE.radius, (0.9 + 0.1 * ratio) * flick(1), 0.2);
+      const ratio = Math.min(1, fuel / w.maxFuel());
+      sq(0, 0, w.fireRadius(), (0.9 + 0.1 * ratio) * flick(1), 0.2);
       const pal = lerpPalette(w.fire.temp);
       lights.push({ x: 8 - camX, y: 4 - camY, r: TILE * (4 + 2.5 * ratio), i: (0.55 + 0.4 * ratio) * flick(2), c: rgb(pal[1]) });
     }
@@ -296,13 +306,21 @@ export function createRenderer(glCanvas, overlay, S) {
       } else if (b.t === 'kiln' && b.ok && b.conn && b.in >= 2) {
         lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 10 - camY, r: TILE * 2.5, i: 0.5 * flick(x), c: rgb('#ff7a2a') });
       } else if (b.t === 'root' && w.rootPowered(x, y) && (x + y) % 3 === 0) {
-        lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 8 - camY, r: TILE * 1.2, i: 0.25, c: rgb('#ff5a1a') });
+        lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 8 - camY, r: TILE * 1.2, i: 0.25, c: rgb(w.rootNodeAt(x, y)?.net === 'fire' ? '#ff5a1a' : '#2ad8c0') });
+      } else if (b.t === 'glowmoss') {
+        sq(x, y, 1, 0.5 * flick(x * 3 + y), 0.15);
+        lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 10 - camY, r: TILE * 1.8, i: 0.28, c: rgb('#6af0b0') });
+      } else if (b.t === 'watchfire' && b.lit) {
+        sq(x, y, MULTIBLOCKS.watchfire.light, 0.85 * flick(x + y), 0.25);
+        lights.push({ x: x * TILE + 8 - camX, y: y * TILE - 40 - camY, r: TILE * 7, i: 0.8 * flick(x), c: rgb(b.net === 'e' ? '#8af5d8' : '#ffa43a') });
+      } else if (MULTIBLOCKS[b.t] && b.ok && b.on && b.t !== 'heart_seed') {
+        lights.push({ x: x * TILE + 8 - camX, y: y * TILE + 10 - camY, r: TILE * (MULTIBLOCKS[b.t].size), i: 0.45 * flick(x), c: rgb(b.t === 'forge_core' ? '#ff6a8a' : '#ff7a2a') });
       }
     }
-    for (const r of ruins) {
-      if (!r.eternal) continue;
-      sq(r.x, r.y, ETERNAL_RADIUS, 0.82 * flick(r.x), 0.15);
-      lights.push({ x: r.x * TILE + 8 - camX, y: r.y * TILE + 2 - camY, r: TILE * 4.5, i: 0.7 * flick(r.y), c: rgb(ETERNAL_PALETTE[1]) });
+    for (const [lx, ly, r, kind] of siteLights) {
+      const [col, rad, inten, top] = SITE_LIGHT[kind] || SITE_LIGHT.glowmoss;
+      sq(lx, ly, r, top * flick(lx + ly), 0.15);
+      lights.push({ x: lx * TILE + 8 - camX, y: ly * TILE + 4 - camY, r: TILE * rad, i: inten * flick(ly), c: rgb(col) });
     }
     for (const p of living) {
       const tx = Math.floor(p.rx), ty = Math.floor(p.ry);
@@ -374,20 +392,22 @@ export function createRenderer(glCanvas, overlay, S) {
   }
 
   // ---------- pieces ----------
-  function fireStage(fuel) {
-    const r = fuel / FIRE.maxFuel;
+  // flame size (0-4) from how full the fire is; -1 = out
+  function fireStage(w) {
+    const fuel = w.fire.fuel, r = fuel / w.maxFuel();
     return fuel <= 0 ? -1 : r < 0.08 ? 0 : r < 0.25 ? 1 : r < 0.5 ? 2 : r < 0.8 ? 3 : 4;
   }
 
   function drawCampfire(w, t) {
     sc.drawImage(S.campfire, -4, 0);
-    const stage = fireStage(w.fire.fuel);
+    const stage = fireStage(w);
     if (stage < 0) { ec.fillStyle = '#3a1a10'; ec.fillRect(5, 9, 6, 1); return; }
     const pal = lerpPalette(w.fire.temp);
-    const H = [3, 7, 11, 15, 20][stage], Wd = [5, 8, 10, 12, 14][stage];
+    const grow = 1 + w.stage() * 0.35; // a Bonfire / Blaze / Inferno burns visibly bigger
+    const H = [3, 7, 11, 15, 20][stage] * grow, Wd = [5, 8, 10, 12, 14][stage] * Math.min(1.8, grow);
     // embers bed
     for (let i = 0; i < 10; i++) { ec.fillStyle = (Math.sin(t * 4 + i * 1.7) > 0.2) ? pal[2] : pal[3]; ec.fillRect(4 + i, 9 + (i % 2), 1, 1); }
-    if (stage >= 2) { drawFlame(ec, 4, 10, Wd * 0.5, H * 0.55, pal, t, 4.1); drawFlame(ec, 12, 10, Wd * 0.5, H * 0.6, pal, t, 7.3); }
+    if (stage >= 2) { drawFlame(ec, 4 - w.stage(), 10, Wd * 0.5, H * 0.55, pal, t, 4.1); drawFlame(ec, 12 + w.stage(), 10, Wd * 0.5, H * 0.6, pal, t, 7.3); }
     drawFlame(ec, 8, 10, Wd, H, pal, t, 1.3);
   }
 
@@ -404,7 +424,22 @@ export function createRenderer(glCanvas, overlay, S) {
       case 'eternal':
         sc.drawImage(S.feat.eternal, px, py);
         drawFlame(ec, px + 8, py + 9, 8, 12 + Math.sin(t * 2) * 1.5, ETERNAL_PALETTE, t, x * 0.37);
+        if (f.store && Object.values(f.store).some((n) => n > 0)) { ec.fillStyle = Math.sin(t * 4) > 0 ? '#c8fff0' : '#5ad8c0'; ec.fillRect(px + 12, py + 2, 2, 2); }
         break;
+      case 'cave_wall': sc.drawImage(S.feat.cave_wall[(hash3(w.seed, x, y, 6) * 2) | 0], px, py - 4); break;
+      case 'coal_seam': sc.drawImage(S.feat.coal_seam, px, py - 4); break;
+      case 'geode':
+        sc.drawImage(S.feat.geode, px, py - 4);
+        for (const [cx, cy, c] of [[7, 9, '#ff8a5a'], [9, 8, '#ffd0c0'], [8, 11, '#ff6a8a'], [6, 11, '#c83a2a']]) { ec.fillStyle = Math.sin(t * 3 + cx) > -0.3 ? c : '#5a1a14'; ec.fillRect(px + cx, py + cy - 4 + 4, 1, 1); }
+        break;
+      case 'shrine': case 'shrine_empty':
+        sc.drawImage(S.feat[f.t], px, py - 4);
+        if (f.t === 'shrine') { ec.fillStyle = Math.sin(t * 3) > 0 ? '#ffe9a8' : '#ffb84a'; ec.fillRect(px + 7, py - 3 + Math.round(Math.sin(t * 2)), 2, 1); ec.fillRect(px + 6, py - 2, 4, 1); }
+        break;
+      case 'ancient_tree': sc.drawImage(S.feat.ancient_tree, px - 12, py - 32); for (let i = 0; i < 5; i++) { ec.fillStyle = '#4ae0a0'; if (Math.sin(t * 2 + i * 1.3) > 0.4) ec.fillRect(px - 6 + i * 6, py - 22 + (i % 3) * 7, 1, 1); } break;
+      case 'ancient_stump': sc.drawImage(S.feat.ancient_stump, px - 4, py); break;
+      case 'dead_fire': sc.drawImage(S.feat.dead_fire, px - 4, py); break;
+      case 'glowmoss': sc.drawImage(S.feat.glowmoss, px, py); glowmossSparks(px, py, t, x + y); break;
       default: {
         const spr = S.feat[f.t];
         if (spr) sc.drawImage(spr, px, py);
@@ -416,11 +451,12 @@ export function createRenderer(glCanvas, overlay, S) {
     const px = x * TILE + 8, py = y * TILE + 8;
     const powered = w.rootPowered(x, y);
     const g = b.g ?? 1;
-    const d = w.rootDistAt(x, y) ?? 0;
+    const node = w.rootNodeAt(x, y);
+    const d = node?.d ?? 0, teal = node && node.net !== 'fire';
     for (const [dx, dy] of N4) {
       const nx = x + dx, ny = y + dy;
       const nb = w.getB(nx, ny);
-      const link = (nx === 0 && ny === 0) || nb?.t === 'root' || (nb && nb.t !== 'root' && w.connected(nx, ny));
+      const link = (nx === 0 && ny === 0) || nb?.t === 'root' || (nb && nb.t !== 'root' && w.connected(nx, ny)) || w.getFeature(nx, ny)?.t === 'eternal' || w.rootNodeAt(nx, ny)?.d === 0;
       if (!link) continue;
       const len = Math.round(8 * g);
       for (let i = 0; i <= len; i++) {
@@ -429,13 +465,13 @@ export function createRenderer(glCanvas, overlay, S) {
         sc.fillStyle = '#2a120c'; sc.fillRect(lx - 1 + (dy ? wig : 0), ly - 1 + (dx ? wig : 0), 3, 3);
         if (powered && g >= 1) {
           const pulse = Math.sin(t * 6 - (d * 8 + i) * 0.4) > 0.6;
-          ec.fillStyle = pulse ? '#ffb070' : '#a8301a';
+          ec.fillStyle = teal ? (pulse ? '#c8fff0' : '#1a8a80') : pulse ? '#ffb070' : '#a8301a';
           ec.fillRect(lx + (dy ? wig : 0), ly + (dx ? wig : 0), 1, 1);
         }
       }
     }
     sc.fillStyle = '#3a1a10'; sc.fillRect(px - 2, py - 2, 4, 4);
-    ec.fillStyle = powered && g >= 1 ? '#e0561f' : g < 1 ? '#5a2010' : '#2a0e08';
+    ec.fillStyle = powered && g >= 1 ? (teal ? '#2ad8c0' : '#e0561f') : g < 1 ? '#5a2010' : '#2a0e08';
     ec.fillRect(px - 1, py - 1, 2, 2);
   }
 
@@ -455,7 +491,7 @@ export function createRenderer(glCanvas, overlay, S) {
       case 'torch': {
         const lit = b.fuel > 0;
         sc.drawImage(S.bld.torch[lit ? 0 : 1], px, py);
-        if (lit) drawFlame(ec, px + 8, py + 5, 4, b.fuel < 20 ? 3 : 5, b.conn ? FLAME_PALETTES[2] : TORCH_PAL, t, x * 1.7 + y);
+        if (lit) drawFlame(ec, px + 8, py + 5, 4, b.fuel < 20 ? 3 : 5, b.net === 'e' ? TEAL_PAL : b.conn ? FLAME_PALETTES[2] : TORCH_PAL, t, x * 1.7 + y);
         break;
       }
       case 'kindling': sc.drawImage(S.bld.kindling[b.g < 0.4 ? 0 : b.g < 1 ? 1 : 2], px, py); outIcon(b, px, py, t); drawFeedLinks(w, b, x, y, t); break;
@@ -468,48 +504,102 @@ export function createRenderer(glCanvas, overlay, S) {
           sc.fillStyle = '#6a5a30'; sc.fillRect(px + 6 + ((x * 3) % 4), py + 11 - Math.round(ph * 2), 1, 1);
         }
         outIcon(b, px, py, t);
+        drawFeedLinks(w, b, x, y, t);
         break;
       }
-      case 'kiln': {
-        if (!b.ok) { sc.drawImage(S.bld.kiln, px, py); break; }
-        // Formed: the whole 3x3 is one structure.
-        const kx = px - TILE, ky = py - TILE - 8;
-        sc.drawImage(S.kilnBig, kx, ky);
-        const working = b.conn && b.in >= 2;
-        const pal = FLAME_PALETTES[1];
-        if (working) {
-          ec.fillStyle = pal[3]; ec.fillRect(kx + 19, ky + 38, 10, 8);
-          ec.fillStyle = pal[2]; ec.fillRect(kx + 20, ky + 41, 8, 5);
-          drawFlame(ec, kx + 24, ky + 46, 9, 6, pal, t, x);
-          if (Math.random() < 0.08) R.parts.push({ x: kx + 34, y: ky - 1, vx: (Math.random() - 0.5) * 4, vy: -10, g: 0, size: 2, grow: 1.5, emit: false, life: 2.5, max: 2.5, drag: 0, col: '#4a4652', a: 0.4 });
-        } else if (b.in > 0 || w.fire.fuel > 0) {
-          ec.fillStyle = '#3a140a'; ec.fillRect(kx + 20, ky + 43, 8, 3);
+      case 'resin_tap':
+        sc.drawImage(S.bld.resin_tap, px, py);
+        if (b.on && Math.sin(t * 3 + x) > 0.6) { sc.fillStyle = '#ffcf5a'; sc.fillRect(px + 10, py + 8 + Math.round((t * 4) % 3), 1, 1); }
+        outIcon(b, px, py, t);
+        break;
+      case 'glowmoss': sc.drawImage(S.bld.glowmoss, px, py); glowmossSparks(px, py, t, x * 7 + y); break;
+      case 'hearth': case 'fire_brick': case 'ember_stone': {
+        sc.drawImage(S.bld[b.t], px, py);
+        // ring blocks around a living fire glow at their seams
+        if (w.fire.fuel > 0 && Math.max(Math.abs(x), Math.abs(y)) <= 3 && w.rootNodeAt(x, y)?.net === 'fire') {
+          ec.fillStyle = Math.sin(t * 3 + x + y) > 0 ? '#a83a1a' : '#7a2a10';
+          if (b.t === 'ember_stone') { ec.fillRect(px + 3, py + 4, 1, 1); ec.fillRect(px + 8, py + 9, 1, 1); ec.fillRect(px + 11, py + 5, 1, 1); }
+          else { ec.fillRect(px + 7, py + 10, 3, 1); ec.fillRect(px + 8, py + 11, 1, 1); }
         }
-        outIcon(b, kx + 16, ky + 12, t);
         break;
       }
-      case 'hearth': {
-        sc.drawImage(S.bld.hearth, px, py);
-        if (w.fire.fuel > 0 && Math.max(Math.abs(x), Math.abs(y)) <= 1) {
-          ec.fillStyle = Math.sin(t * 3 + x) > 0 ? '#a83a1a' : '#7a2a10';
-          ec.fillRect(px + 7, py + 10, 3, 1); ec.fillRect(px + 8, py + 11, 1, 1);
-        }
+      case 'kiln': case 'press': case 'coal_bed': case 'forge_core': case 'watchfire': case 'heart_seed': {
+        drawMultiblock(w, b, x, y, t);
         break;
       }
       default: { const spr = S.bld[b.t]; if (spr) sc.drawImage(Array.isArray(spr) ? spr[0] : spr, px, py); }
     }
   }
 
-  function formedKilnAt(w, x, y) {
-    for (const [dx, dy] of N8) { const c = w.getB(x + dx, y + dy); if (c?.t === 'kiln' && c.ok) return true; }
-    return false;
+  // A wall block of a fused (formed) multiblock is drawn as part of its core's big sprite.
+  function fusedWallAt(w, b, x, y) {
+    if (MULTIBLOCKS[b.t] || !b) return false;
+    const c = w.formedCoreAt(x, y);
+    return !!(c && MULTIBLOCKS[c[2].t].fuse);
   }
 
-  // Little chevrons on the shared edge when a plant feeds the machine beside it (#5).
+  function glowmossSparks(px, py, t, seed) {
+    for (const [cx, cy] of [[4, 8], [9, 7], [12, 11], [6, 12]]) {
+      ec.fillStyle = Math.sin(t * 1.5 + seed + cx) > 0 ? '#6af0b0' : '#2a8a60';
+      ec.fillRect(px + cx, py + cy, 1, 1);
+    }
+  }
+
+  function drawMultiblock(w, b, x, y, t) {
+    const m = MULTIBLOCKS[b.t], h = (m.size - 1) / 2;
+    const px = x * TILE, py = y * TILE;
+    const formed = S.formed[b.t];
+    if (!b.ok || !formed) { sc.drawImage(S.bld[b.t], px, py); outIcon(b, px, py, t); return; }
+    drawFeedLinks(w, b, x, y, t);
+    const [spr, ox, oy] = formed;
+    const fx = px - h * TILE + ox, fy = py - h * TILE + oy;
+    if (b.t === 'heart_seed') {
+      // the grove's tree grows from a sprout to full size
+      const g = Math.max(0.25, b.g ?? 0);
+      const wdt = Math.round(spr.width * g), hgt = Math.round(spr.height * g);
+      sc.drawImage(spr, Math.round(px + 8 - wdt / 2), Math.round(py + 12 - hgt), wdt, hgt);
+      for (let i = 0; i < 6; i++) if (Math.sin(t * 2 + i * 1.7) > 0.3) { ec.fillStyle = i % 2 ? '#ffb070' : '#6af0b0'; ec.fillRect(Math.round(px + 8 - wdt / 3 + (i * wdt) / 9), Math.round(py + 12 - hgt * (0.3 + (i % 3) * 0.2)), 1, 1); }
+      outIcon(b, px, py - hgt + 12, t);
+      return;
+    }
+    sc.drawImage(spr, fx, fy);
+    const pal = b.net === 'e' ? TEAL_PAL : FLAME_PALETTES[1];
+    const cx = px + 8;
+    if (b.t === 'kiln') {
+      if (b.on) {
+        ec.fillStyle = pal[3]; ec.fillRect(fx + 19, fy + 38, 10, 8);
+        ec.fillStyle = pal[2]; ec.fillRect(fx + 20, fy + 41, 8, 5);
+        drawFlame(ec, fx + 24, fy + 46, 9, 6, pal, t, x);
+        if (Math.random() < 0.08) R.parts.push({ x: fx + 34, y: fy - 1, vx: (Math.random() - 0.5) * 4, vy: -10, g: 0, size: 2, grow: 1.5, emit: false, life: 2.5, max: 2.5, drag: 0, col: '#4a4652', a: 0.4 });
+      }
+    } else if (b.t === 'press') {
+      if (b.on && Math.sin(t * 4) > 0) { sc.fillStyle = '#5a4228'; sc.fillRect(fx + 18 + Math.round((t * 6) % 12), fy + 41, 1, 1); }
+    } else if (b.t === 'coal_bed') {
+      for (const [vx, vy] of [[24, 40], [52, 36], [38, 58]]) {
+        ec.fillStyle = b.on ? (Math.sin(t * 3 + vx) > 0 ? pal[1] : pal[2]) : '#2a0e08';
+        ec.fillRect(fx + vx + 1, fy + vy + 1, 6, 3);
+        if (b.on && Math.random() < 0.03) R.parts.push({ x: fx + vx + 4, y: fy + vy - 2, vx: 0, vy: -8, g: 0, size: 2, grow: 1.2, emit: false, life: 2, max: 2, drag: 0, col: '#4a4652', a: 0.35 });
+      }
+    } else if (b.t === 'forge_core') {
+      const glow = b.on ? 1 : 0.35;
+      for (const [sx, hh] of [[40, 34], [32, 20], [48, 24], [36, 14], [44, 16]]) {
+        for (let i = 0; i < hh; i += 2) if (Math.sin(t * 3 + i * 0.5 + sx) > 1 - glow * 1.4) { ec.fillStyle = i > hh - 6 ? '#ffe0f0' : '#ff6a8a'; ec.fillRect(fx + sx, fy + 66 - i, 1, 1); }
+      }
+      if (b.on && Math.random() < 0.2) P({ x: fx + 40 + (Math.random() - 0.5) * 16, y: fy + 34, vy: -15 - Math.random() * 15, life: 1 + Math.random(), col: Math.random() < 0.5 ? '#ff8ad8' : '#ffd0c0', emit: true });
+    } else if (b.t === 'watchfire') {
+      if (b.lit) {
+        drawFlame(ec, cx, fy + 12, 22, 22 + Math.sin(t * 2) * 2, pal, t, x * 0.7);
+        if (Math.random() < 0.4) P({ x: cx + (Math.random() - 0.5) * 18, y: fy + 4, vx: (Math.random() - 0.5) * 10, vy: -25 - Math.random() * 30, life: 1 + Math.random(), col: pal[1 + ((Math.random() * 2) | 0)], emit: true });
+      } else { ec.fillStyle = '#2a1a10'; ec.fillRect(fx + 12, fy + 14, 24, 1); }
+    }
+    outIcon(b, fx + (spr.width >> 1) - 8, fy + 10, t);
+  }
+
+  // Chevrons on the shared edge when a plant or machine feeds the machine beside it.
   function drawFeedLinks(w, b, x, y, t) {
-    for (const [, , , ex, ey] of w.feedTargets(x, y, b.t)) {
-      const dx = ex - x, dy = ey - y;
-      const mx = x * TILE + 8 + dx * 8, my = y * TILE + 8 + dy * 8;
+    for (const [, , , ex, ey, fx, fy] of w.feedTargets(x, y, b.t)) {
+      const dx = ex - fx, dy = ey - fy;
+      const mx = fx * TILE + 8 + dx * 8, my = fy * TILE + 8 + dy * 8;
       const pulse = (Math.sin(t * 5 + x + y) + 1) / 2;
       ec.fillStyle = pulse > 0.5 ? '#ffb070' : '#a85a2a';
       for (let i = -1; i <= 1; i++) {
@@ -547,26 +637,35 @@ export function createRenderer(glCanvas, overlay, S) {
     const toS = (wx, wy) => [(wx - R.camX) * s, (wy - R.camY) * s];
     const w = st.world;
 
-    // kiln ghosts: show where the missing bricks go
-    for (const [k, b] of w.bld) {
-      if (b.t !== 'kiln' || b.ok) continue;
-      const [x, y] = k.split(',').map(Number);
-      for (const [dx, dy] of N8) {
-        if (w.getB(x + dx, y + dy)?.t === 'brick') continue;
-        const [sx, sy] = toS((x + dx) * TILE, (y + dy) * TILE);
-        oc.globalAlpha = 0.16 + 0.06 * Math.sin(t * 3);
-        oc.drawImage(S.icon.brick, sx, sy, TILE * s, TILE * s);
-        oc.globalAlpha = 0.45;
-        oc.fillStyle = '#e0a060';
-        const c = s * 3, lw = s;
-        for (const [ax, ay] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-          const X = sx + ax * (TILE * s - lw), Y = sy + ay * (TILE * s - lw);
-          oc.fillRect(ax ? X - c + lw : X, Y, c, lw);
-          oc.fillRect(X, ay ? Y - c + lw : Y, lw, c);
-        }
+    // Ghosts: where the missing wall blocks of an unfinished multiblock go, and the next ring
+    // around the campfire once you've started it (or are holding its block).
+    const ghost = (gx, gy, item) => {
+      const [sx, sy] = toS(gx * TILE, gy * TILE);
+      oc.globalAlpha = 0.16 + 0.06 * Math.sin(t * 3);
+      oc.drawImage(S.icon[item], sx, sy, TILE * s, TILE * s);
+      oc.globalAlpha = 0.45;
+      oc.fillStyle = '#e0a060';
+      const c = s * 3, lw = s;
+      for (const [ax, ay] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const X = sx + ax * (TILE * s - lw), Y = sy + ay * (TILE * s - lw);
+        oc.fillRect(ax ? X - c + lw : X, Y, c, lw);
+        oc.fillRect(X, ay ? Y - c + lw : Y, lw, c);
       }
-      oc.globalAlpha = 1;
+    };
+    for (const [k, b] of w.bld) {
+      const m = MULTIBLOCKS[b.t];
+      if (!m || b.ok) continue;
+      const [x, y] = k.split(',').map(Number);
+      for (const [gx, gy] of w.mbTiles(x, y, b.t)) if ((gx !== x || gy !== y) && w.getB(gx, gy)?.t !== m.wall) ghost(gx, gy, m.wall);
     }
+    const next = FIRE_STAGES[w.stage() + 1];
+    if (next) {
+      const held = st.inv[st.sel]?.item === next.block;
+      const ring = [];
+      for (let y = -next.ring; y <= next.ring; y++) for (let x = -next.ring; x <= next.ring; x++) if (Math.max(Math.abs(x), Math.abs(y)) === next.ring) ring.push([x, y]);
+      if (held || ring.some(([x, y]) => w.getB(x, y)?.t === next.block)) for (const [x, y] of ring) if (w.getB(x, y)?.t !== next.block) ghost(x, y, next.block);
+    }
+    oc.globalAlpha = 1;
 
     // hover target
     const h = st.hover;

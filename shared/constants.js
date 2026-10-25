@@ -5,19 +5,21 @@ export const TICK_RATE = 20;
 export const SNAP_EVERY = 2; // ticks per snapshot (10Hz)
 export const DEFAULT_PORT = 7777;
 
+// Radius and max fuel depend on the fire's stage (see FIRE_STAGES in defs.js).
 export const FIRE = {
-  radius: 4, // 9x9 lit square
   startFuel: 240,
-  maxFuel: 600,
   baseBurn: 1, // fuel/sec at minute 0
-  hungerPerMin: 0.05, // burn multiplier growth per minute
-  demandEveryMin: 5, // heat demand tier rises every N minutes
-  maxDemand: 4,
+  hungerPerMin: 0.05, // linear burn growth per minute
+  hungerGrowth: 1.02, // ...times this to the power of minutes: it never stops getting hungrier
+  demandEveryMin: 6, // heat demand tier rises every N minutes
+  maxDemand: 9,
   belowHeatPenalty: 0.3, // value multiplier per tier below demand
   reviveCost: 120,
   rainMult: 1.5,
   hotBonus: 0.85, // burn multiplier when temperature exceeds demand
 };
+
+export const ETERNAL_ROOT_REACH = 40; // eternal flames never weaken
 
 export const TORCH = {
   placedRadius: 2, // 5x5
@@ -41,4 +43,4 @@ export const PACKET_SPEED = 6; // tiles/sec along roots
 
 export const PLAYER_COLORS = ['#d8553a', '#3a8fd8', '#5fbf4a', '#d8b03a', '#a45fd8', '#3ad8c0', '#d83a8f', '#e8e8e8'];
 
-export const FIRE_TIERS = ['Smoldering', 'Burning', 'Bright', 'White-hot', 'Blue'];
+export const FIRE_TIERS = ['Smoldering', 'Burning', 'Bright', 'Golden', 'White-hot', 'Pale Blue', 'Blue', 'Violet', 'Magenta', 'Starfire'];

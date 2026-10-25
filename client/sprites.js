@@ -347,6 +347,233 @@ export function makeSprites() {
     return c;
   };
 
+  // ---------- progression: fuels & items ----------
+  const icon = (name, fn) => { S.icon[name] = mk(16, 16, fn); };
+  icon('resin', (g) => {
+    const rnd = mulberry32(301);
+    blob(g, 8, 10, 5, 5.5, ['#ffd870', '#e8a030', '#b86a18', '#5a3008'], rnd, 0.05);
+    g.r(7, 3, 2, 3, '#e8a030'); g.p(8, 2, '#ffd870'); g.p(6, 8, '#fff6d8'); g.p(6, 9, '#fff6d8');
+  });
+  icon('lignite', (g) => {
+    for (const [y, c] of [[5, '#5e452a'], [7, '#3a2a1a'], [9, '#4a3420'], [11, '#2e2014']]) g.r(3, y, 10, 2, c);
+    g.r(3, 5, 10, 1, '#7a5a38'); g.r(4, 13, 8, 1, '#1e140c'); g.p(5, 8, '#8a6a48'); g.p(10, 10, '#8a6a48');
+  });
+  icon('heartwood', (g) => {
+    g.r(2, 6, 10, 6, '#7a2a1a'); g.r(2, 6, 10, 1, '#a8402a'); g.r(2, 11, 10, 1, '#4a1a10');
+    g.r(11, 5, 4, 8, '#e8a050'); g.r(12, 6, 2, 6, '#ffd080'); g.p(12, 8, '#c86030'); g.p(13, 9, '#c86030');
+    g.r(4, 8, 4, 1, '#ff8a4a');
+  });
+  icon('coal', (g) => {
+    for (const [x, y, w, h] of [[2, 8, 6, 5], [7, 4, 7, 7], [8, 10, 6, 4]]) { g.r(x, y, w, h, '#16161e'); g.r(x, y, w, 1, '#3a3a4a'); g.p(x + 1, y + 1, '#8a9ab8'); g.p(x + 2, y + 1, '#5a6a88'); }
+  });
+  icon('ember_crystal', (g) => {
+    const shard = (x, y, h, c1, c2) => { for (let i = 0; i < h; i++) { const w = Math.max(1, Math.round((1 - i / h) * 3)); g.r(x - (w >> 1), y - i, w, 1, i < h / 2 ? c1 : c2); } g.p(x, y - h, '#ffe0c0'); };
+    shard(5, 14, 7, '#c83a1a', '#ff8a4a'); shard(11, 14, 6, '#c83a1a', '#ff8a4a'); shard(8, 14, 11, '#ff6a3a', '#ffb070');
+    g.r(3, 14, 10, 1, '#5a1a10'); g.p(8, 6, '#fff6e8'); g.p(7, 9, '#ffe0c0');
+  });
+  icon('pickaxe', (g) => {
+    for (let i = 0; i < 11; i++) { g.p(3 + i, 14 - i, '#8a6440'); g.p(4 + i, 14 - i, '#5a3d26'); }
+    for (const [x, y] of [[5, 3], [6, 2], [7, 2], [8, 2], [9, 3], [10, 4], [11, 5], [12, 6], [13, 8], [4, 4]]) { g.p(x, y, '#9a98a3'); g.p(x, y + 1, '#5a5862'); }
+    g.p(8, 1, '#c8c6d0');
+  });
+  icon('glowmoss', (g) => {
+    const rnd = mulberry32(303);
+    for (let i = 0; i < 26; i++) { const x = 2 + rnd() * 12, y = 6 + rnd() * 9; g.p(x, y, ['#2a9a6a', '#4ae0a0', '#1f6a4a'][(rnd() * 3) | 0]); }
+    for (const [x, y] of [[4, 8], [9, 7], [12, 11], [6, 12]]) { g.p(x, y, '#a8ffd8'); g.p(x, y - 1, '#4ae0a0'); }
+  });
+  icon('heart_seed', (g) => {
+    const rnd = mulberry32(304);
+    blob(g, 8, 10, 4.5, 4, ['#ffc070', '#e8803a', '#a8401a', '#4a1a08'], rnd, 0.05);
+    g.r(8, 3, 1, 4, '#3f8a42'); g.p(9, 3, '#6aca5a'); g.p(7, 4, '#6aca5a'); g.p(7, 9, '#fff0c8');
+  });
+  icon('crystal_geode', (g) => {
+    const rnd = mulberry32(305);
+    blob(g, 8, 9, 7, 6, ['#8a8892', '#6a6872', '#4a4852', '#2a2832'], rnd, 0.1);
+    blob(g, 8, 9, 3.2, 2.8, ['#ffd0c0', '#ff8a5a', '#c83a2a', '#5a1a14'], rnd, 0.05);
+    g.p(7, 8, '#ffffff');
+  });
+  // bricks & walls
+  const bricks = (g, tones, mortar, hi, lo, seed) => {
+    const rnd = mulberry32(seed);
+    g.r(0, 0, 16, 16, mortar);
+    [[0, 4], [5, 4], [10, 4]].forEach(([y, h], row) => {
+      for (let bx = row % 2 ? -4 : 0; bx < 16; bx += 8) {
+        const x0 = Math.max(0, bx + 1), x1 = Math.min(16, bx + 8);
+        if (x1 <= x0) continue;
+        g.r(x0, y + 1, x1 - x0, h - 1, tones[(rnd() * tones.length) | 0]);
+        g.r(x0, y + 1, x1 - x0, 1, hi); g.r(x0, y + h - 1, x1 - x0, 1, lo);
+      }
+    });
+  };
+  icon('fire_brick', (g) => bricks(g, ['#c8783a', '#b86a30', '#d8884a'], '#3a2014', '#f0a868', '#7a3a1a', 311));
+  icon('ember_stone', (g) => {
+    const rnd = mulberry32(312);
+    g.r(0, 0, 16, 16, '#1e181c'); g.r(1, 1, 14, 14, '#2e262c'); g.r(1, 1, 14, 1, '#4a3e46');
+    speckle(g, rnd, 10, ['#3a3038', '#241c22']);
+    for (const [x0, y0, x1, y1] of [[3, 4, 8, 9], [8, 9, 12, 7], [8, 9, 7, 13], [11, 3, 12, 7]]) {
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= n; i++) g.p(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n, '#c84a1a');
+    }
+  });
+  icon('timber', (g) => {
+    g.r(0, 0, 16, 16, '#2a1c12');
+    g.r(1, 1, 14, 2, '#8a6038'); g.r(1, 13, 14, 2, '#6a4a2a'); g.r(1, 1, 2, 14, '#7a5432'); g.r(13, 1, 2, 14, '#6a4a2a');
+    for (let i = 0; i < 10; i++) { g.p(3 + i, 3 + i, '#9a7048'); g.p(4 + i, 3 + i, '#5a3d22'); }
+    g.p(2, 2, '#b08458'); g.p(14, 14, '#3a2814');
+  });
+  icon('packed_earth', (g) => {
+    const rnd = mulberry32(314);
+    g.r(0, 0, 16, 16, '#4a3a28');
+    for (const [y, c] of [[0, '#5e4a32'], [5, '#544230'], [10, '#4e3e2c']]) g.r(0, y, 16, 4, c);
+    g.r(0, 4, 16, 1, '#3a2c1e'); g.r(0, 9, 16, 1, '#3a2c1e'); g.r(0, 14, 16, 2, '#2e2218');
+    speckle(g, rnd, 14, ['#6a5638', '#3a2c1e', '#7a6a50']);
+  });
+  icon('press', (g) => {
+    g.r(2, 2, 2, 13, '#7a5432'); g.r(12, 2, 2, 13, '#7a5432'); g.r(2, 2, 12, 2, '#8a6038');
+    g.r(4, 5, 8, 5, '#77757f'); g.r(4, 5, 8, 1, '#9a98a3'); g.r(4, 9, 8, 1, '#4a4852');
+    g.r(7, 4, 2, 1, '#5a3d22'); g.r(3, 13, 10, 2, '#3a2a1a'); g.r(5, 12, 6, 1, '#5a4228');
+  });
+  icon('coal_bed', (g) => {
+    const rnd = mulberry32(316);
+    blob(g, 8, 10, 7, 5.5, ['#6a5638', '#54442e', '#3e3222', '#241c14'], rnd, 0.1);
+    g.r(6, 8, 4, 2, '#1a1008'); g.p(7, 8, '#c84a1a'); g.p(8, 9, '#ff7a2a');
+  });
+  icon('forge_core', (g) => {
+    bricks(g, ['#c8783a', '#b86a30'], '#3a2014', '#f0a868', '#7a3a1a', 317);
+    g.r(5, 4, 6, 9, '#2a1010');
+    for (const [x, y, h] of [[8, 12, 7], [6, 12, 4], [10, 12, 5]]) for (let i = 0; i < h; i++) g.p(x, y - i, i > h - 3 ? '#ffd0c0' : '#ff6a3a');
+  });
+  icon('watchfire', (g) => {
+    g.r(3, 8, 10, 3, '#5a5764'); g.r(2, 7, 12, 1, '#7a7784'); g.r(6, 11, 4, 4, '#46434d'); g.r(5, 14, 6, 1, '#34323a');
+    g.r(4, 6, 8, 1, '#2a2a30'); g.p(6, 5, '#ff9a3a'); g.p(8, 4, '#ffd27a'); g.p(9, 5, '#ff6a2a'); g.p(7, 5, '#ffd27a');
+  });
+  icon('resin_tap', (g) => {
+    g.r(3, 4, 7, 2, '#8a6038'); g.r(9, 4, 2, 3, '#6a4a2a'); g.p(10, 8, '#ffcf5a'); g.p(10, 9, '#e8a030');
+    g.r(7, 10, 7, 5, '#6a4a2c'); g.r(7, 10, 7, 1, '#8a6440'); g.r(8, 11, 5, 1, '#e8a030');
+  });
+  // blueprints: one design, tinted by how far out they're found
+  const bpTint = { kiln: '#ff9a4a', resin_tap: '#ffcf5a', peat_press: '#a8804a', blaze: '#ff6a3a', watchfire: '#ffd27a', coal_bed: '#8a9ab8', inferno: '#ff4a2a', crystal_forge: '#ff8ad8' };
+  for (const [id, tint] of Object.entries(bpTint)) icon('bp_' + id, (g) => {
+    g.r(2, 3, 12, 10, '#2a5a9a'); g.r(2, 3, 12, 1, '#4a7aba'); g.r(2, 12, 12, 1, '#1a3a6a');
+    g.r(1, 2, 2, 12, '#c9b48a'); g.r(13, 2, 2, 12, '#c9b48a');
+    for (let x = 5; x <= 10; x++) { g.p(x, 5, '#cfe4ff'); g.p(x, 10, '#cfe4ff'); }
+    for (let y = 5; y <= 10; y++) { g.p(5, y, '#cfe4ff'); g.p(10, y, '#cfe4ff'); }
+    g.r(7, 7, 2, 2, tint);
+  });
+  // placed blocks use their icons
+  for (const t of ['fire_brick', 'ember_stone', 'timber', 'packed_earth', 'press', 'coal_bed', 'forge_core', 'watchfire', 'resin_tap', 'glowmoss', 'heart_seed']) S.bld[t] = S.icon[t];
+
+  // ---------- progression: ground & site features ----------
+  S.ground.cave = [0, 1, 2, 3].map((v) => mk(16, 16, (g) => {
+    const rnd = mulberry32(320 + v);
+    g.r(0, 0, 16, 16, '#26222a');
+    speckle(g, rnd, 22, ['#2e2a32', '#1e1a22', '#34303a']);
+    for (let i = 0; i < 2; i++) { const x = (rnd() * 13) | 0, y = (rnd() * 13) | 0; g.r(x, y, 2, 1, '#3e3a44'); }
+  }));
+  S.ground.moss = [0, 1, 2, 3].map((v) => mk(16, 16, (g) => {
+    const rnd = mulberry32(330 + v);
+    g.r(0, 0, 16, 16, '#1c3a26');
+    speckle(g, rnd, 30, ['#24482e', '#163020', '#2a5236']);
+    if (rnd() < 0.5) g.p(rnd() * 16, rnd() * 16, '#3a9a6a');
+  }));
+  S.feat.cave_wall = [0, 1].map((v) => mk(16, 20, (g) => {
+    const rnd = mulberry32(340 + v);
+    blob(g, 8, 10, 9, 10.5, ['#4a4652', '#3a3640', '#2a2630', '#16141a'], rnd, 0.15);
+    speckle(g, rnd, 6, ['#524e5a', '#2e2a34']);
+  }));
+  S.feat.coal_seam = mk(16, 20, (g) => {
+    g.ctx.drawImage(S.feat.cave_wall[0], 0, 0);
+    for (const [x, y] of [[4, 6], [9, 9], [6, 13], [11, 5], [12, 14]]) { g.r(x, y, 3, 2, '#0e0e14'); g.p(x, y, '#6a7a98'); }
+  });
+  S.feat.geode = mk(16, 20, (g) => {
+    g.ctx.drawImage(S.feat.cave_wall[1], 0, 0);
+    g.r(5, 8, 6, 5, '#1a1014');
+  });
+  S.feat.dead_fire = mk(24, 16, (g) => {
+    const stones = [[2, 10], [6, 12], [11, 13], [16, 12], [20, 10], [5, 7], [18, 7]];
+    g.r(5, 9, 14, 4, '#3a3436');
+    for (let i = 0; i < 6; i++) g.r(6 + i * 2, 9 - (i % 2), 5, 2, i % 2 ? '#1e1a1a' : '#2a2422');
+    for (const [x, y] of stones) { g.r(x, y, 4, 3, '#5a5860'); g.r(x, y, 4, 1, '#6a6872'); g.r(x, y + 3, 4, 1, '#2e2d34'); }
+    g.p(10, 10, '#8a8888'); g.p(13, 11, '#7a7878');
+  });
+  S.feat.bedroll = mk(16, 16, (g) => {
+    g.r(2, 8, 12, 5, '#7a3a34'); g.r(2, 8, 12, 1, '#9a5048'); g.r(2, 12, 12, 1, '#4a2420');
+    g.r(11, 7, 4, 7, '#8a4a40'); g.r(12, 8, 2, 5, '#5a2a24'); g.r(3, 10, 8, 1, '#c8a060');
+  });
+  S.feat.note = mk(16, 16, (g) => {
+    g.r(4, 6, 8, 8, '#d8c8a8'); g.r(4, 6, 8, 1, '#efe2c4'); g.r(11, 6, 1, 8, '#a89878');
+    for (const y of [8, 10, 12]) g.r(5, y, 5, 1, '#6a5a48');
+    g.p(4, 13, '#a89878');
+  });
+  const shrine = (lit) => mk(16, 20, (g) => {
+    g.r(4, 6, 8, 12, '#6a6676'); g.r(4, 6, 8, 1, '#8a8696'); g.r(11, 6, 1, 12, '#4a4656');
+    g.r(3, 17, 10, 3, '#4a4656'); g.r(2, 4, 12, 2, '#7a7686'); g.r(2, 4, 12, 1, '#9a96a6');
+    g.r(6, 9, 4, 5, lit ? '#3a2a1a' : '#3a3846');
+    if (lit) { g.r(5, 1, 6, 3, '#2a5a9a'); g.r(5, 1, 6, 1, '#4a7aba'); }
+  });
+  S.feat.shrine = shrine(true);
+  S.feat.shrine_empty = shrine(false);
+  S.feat.ancient_tree = mk(40, 48, (g) => {
+    const rnd = mulberry32(350);
+    g.r(16, 26, 8, 22, '#4a2e1e'); g.r(22, 26, 2, 22, '#2e1c12'); g.r(12, 42, 16, 6, '#3a2418'); g.r(9, 45, 6, 3, '#3a2418'); g.r(25, 45, 6, 3, '#3a2418');
+    for (let y = 28; y < 46; y += 3) g.p(18 + (y % 2), y, '#2a6a4a');
+    blob(g, 20, 17, 19, 16, ['#3f8a52', '#2c6a3e', '#1e4a2c', '#0e2a18'], rnd, 0.3);
+    speckle({ p: (x, y, c) => { if (Math.hypot((x - 20) / 19, (y - 17) / 16) < 0.85) g.p(x, y, c); }, w: 40, h: 34 }, rnd, 26, ['#4ae0a0', '#5aa060', '#2e6a3a']);
+  });
+  S.feat.ancient_stump = mk(24, 16, (g) => {
+    const rnd = mulberry32(351);
+    blob(g, 12, 10, 10, 5, ['#8a5a3a', '#6a4028', '#4a2a1a', '#2a180e'], rnd, 0);
+    for (const r of [7, 4, 2]) for (let a = 0; a < 6.28; a += 0.35) g.p(12 + Math.cos(a) * r, 9 + Math.sin(a) * r * 0.45, '#5a3420');
+    g.p(12, 9, '#e8a050');
+  });
+  S.feat.glowmoss = S.icon.glowmoss;
+
+  // ---------- progression: formed multiblocks (drawn over their whole footprint) ----------
+  // Each: [sprite, width, height, offsetX, offsetY] relative to the footprint's top-left tile.
+  S.formed = {};
+  S.formed.kiln = [S.kilnBig, -0, -8];
+  S.formed.press = [mk(48, 56, (g) => {
+    g.r(4, 44, 40, 10, '#3a2a1a'); g.r(4, 44, 40, 1, '#5a4228');
+    g.r(6, 8, 6, 44, '#7a5432'); g.r(36, 8, 6, 44, '#7a5432'); g.r(6, 8, 1, 44, '#9a7048'); g.r(41, 8, 1, 44, '#4a3220');
+    g.r(4, 4, 40, 6, '#8a6038'); g.r(4, 4, 40, 1, '#aa7a48'); g.r(4, 9, 40, 1, '#5a3d22');
+    g.r(22, 10, 4, 10, '#5a3d22'); g.r(23, 10, 1, 10, '#7a5432');
+    g.r(12, 20, 24, 16, '#77757f'); g.r(12, 20, 24, 2, '#9a98a3'); g.r(12, 35, 24, 1, '#4a4852'); g.r(35, 20, 1, 16, '#5a5862');
+    g.r(14, 38, 20, 6, '#3a2c16'); g.r(14, 38, 20, 1, '#5a4228');
+    for (let i = 0; i < 4; i++) g.p(16 + i * 5, 41, '#2e2014');
+  }), 0, -8];
+  S.formed.coal_bed = [mk(80, 88, (g) => {
+    const rnd = mulberry32(360);
+    blob(g, 40, 50, 39, 37, ['#6a5638', '#54442e', '#3e3222', '#1e160e'], rnd, 0.05);
+    for (let y = 20; y < 86; y += 6) for (let x = 6; x < 74; x += 7) if (Math.hypot((x - 40) / 38, (y - 50) / 36) < 0.92 && rnd() < 0.5) g.r(x, y, 3, 1, rnd() < 0.5 ? '#7a6a50' : '#3a2c1e');
+    for (const [x, y] of [[24, 40], [52, 36], [38, 58]]) { g.r(x, y, 8, 5, '#140c08'); g.r(x, y - 1, 8, 1, '#2a1c12'); }
+  }), 0, -8];
+  S.formed.forge_core = [mk(80, 96, (g) => {
+    const rnd = mulberry32(361);
+    for (let y = 16; y < 96; y += 5) {
+      const off = (y / 5) % 2 ? 4 : 0;
+      for (let x = off; x < 80; x += 8) { g.r(x + 1, y + 1, 7, 4, ['#c8783a', '#b86a30', '#d8884a'][(rnd() * 3) | 0]); g.r(x + 1, y + 1, 7, 1, '#f0a868'); }
+    }
+    g.r(0, 16, 80, 1, '#3a2014'); g.r(0, 95, 80, 1, '#2a1410');
+    g.r(24, 30, 32, 40, '#2a1010'); g.r(24, 30, 32, 2, '#4a2018');
+    // crystal spire base (glow drawn as emissive at runtime)
+    for (const [x, h] of [[40, 34], [32, 20], [48, 24], [36, 14], [44, 16]]) for (let i = 0; i < h; i++) { const w = Math.max(1, Math.round((1 - i / h) * 4)); g.r(x - (w >> 1), 66 - i, w, 1, i > h - 4 ? '#ffd0c0' : i % 3 ? '#c83a2a' : '#ff6a3a'); }
+  }), 0, -16];
+  S.formed.watchfire = [mk(48, 72, (g) => {
+    for (let y = 18; y < 72; y++) {
+      const half = 8 + Math.round((y - 18) / 54 * 12);
+      g.r(24 - half, y, half * 2, 1, (Math.floor(y / 4) % 2) ? '#6a6676' : '#5a5764');
+      g.p(24 - half, y, '#7a7686'); g.p(24 + half - 1, y, '#3a3846');
+    }
+    for (let y = 22; y < 72; y += 4) g.r(24 - 8 - Math.round((y - 18) / 54 * 12), y, 16 + Math.round((y - 18) / 54 * 24), 1, '#46434d');
+    g.r(8, 10, 32, 8, '#4a4652'); g.r(6, 8, 36, 3, '#7a7686'); g.r(6, 8, 36, 1, '#9a96a6'); g.r(10, 14, 28, 2, '#2a2a30');
+    g.r(20, 46, 8, 12, '#1a1820');
+  }), 0, -24];
+  S.formed.heart_seed = [mk(48, 64, (g) => {
+    const rnd = mulberry32(362);
+    g.r(19, 34, 10, 26, '#5a2a1a'); g.r(26, 34, 3, 26, '#3a1a10'); g.r(14, 56, 20, 6, '#4a2216');
+    blob(g, 24, 22, 23, 20, ['#4aa868', '#2e7a48', '#1e5432', '#0e2a18'], rnd, 0.3);
+  }), 0, -16];
+
   return S;
 }
 
@@ -358,12 +585,18 @@ export function shadeColor(hex, amt) {
 }
 
 // Flame palettes: [core, inner, outer, tip]. Index = fire temperature tier.
+// Index = fire temperature tier (= the heat tier of what it's been fed).
 export const FLAME_PALETTES = [
-  ['#ffb070', '#ff6a2a', '#c2301c', '#6a1a12'],
-  ['#ffe9a8', '#ffa43a', '#e2551f', '#8a2a14'],
-  ['#fff8d0', '#ffd94a', '#ff9a2a', '#c4521c'],
-  ['#ffffff', '#fff3c8', '#ffd27a', '#e09040'],
-  ['#ffffff', '#c8ecff', '#5aa8ff', '#2a4ad0'],
+  ['#ffb070', '#ff6a2a', '#c2301c', '#6a1a12'], // smoldering
+  ['#ffe9a8', '#ffa43a', '#e2551f', '#8a2a14'], // burning
+  ['#fff8d0', '#ffd94a', '#ff9a2a', '#c4521c'], // bright
+  ['#fffbe0', '#ffe27a', '#ffb83a', '#d8782a'], // golden
+  ['#ffffff', '#fff3c8', '#ffd27a', '#e09040'], // white-hot
+  ['#ffffff', '#e0f4ff', '#a8d8ff', '#5a9ae0'], // pale blue
+  ['#ffffff', '#c8ecff', '#5aa8ff', '#2a4ad0'], // blue
+  ['#ffffff', '#e0d0ff', '#a07aff', '#5a30c8'], // violet
+  ['#ffffff', '#ffd0f0', '#ff6ad0', '#a01a8a'], // magenta
+  ['#ffffff', '#fff0f8', '#ffc8e8', '#e88ac8'], // starfire
 ];
 export const ETERNAL_PALETTE = ['#f0fff8', '#8af5d8', '#2ab8a8', '#16606a'];
 

@@ -32,3 +32,13 @@ Balance knobs live in `shared/constants.js` and `shared/defs.js`.
 ## Audio
 
 Ambience (fire, rain, wind, freezing drone, eternal-flame hum) is synthesized live in `client/audio.js`. One-shot sounds are CC0 from Kenney (`public/sfx/`, license included). **Music slot:** drop a track at `public/music/theme.ogg` and it loops automatically. `M` mutes.
+
+## Progression
+
+The fire never stops getting hungrier (linear x 1.02^minutes burn growth) and every 6 minutes demands a hotter fuel tier, so a base that doesn't expand dies. Fuel ladder (alternating growth/decay): leaves, sticks, logs, peat, charcoal, resin, lignite, heartwood, coal, ember crystal.
+
+- **Fire stages**: ring the campfire with 8 Hearthstones (Bonfire), then 16 Fire Bricks (Blaze), then 24 Ember Stones (Inferno) for more fuel capacity and light.
+- **Multiblocks** (`MULTIBLOCKS` in `shared/defs.js`): Kiln, Peat Press (3x3), Coal Bed, Crystal Forge (5x5), Watchfire (3x3 light tower), Heart Grove (heartwood seed ringed by glowmoss). Machines feed the next machine beside them (`FEEDS`).
+- **Eternal flames** grow teal root networks: free heat, output goes to the flame's cache. Orange and teal networks can't be joined.
+- **Sites** (`shared/worldgen.js`): ruins, dead campfires, shrines (guaranteed blueprint, better farther out), collapsed mines (coal seams, geodes; pickaxe), ancient groves (glowmoss, heartwood).
+- Cheats: `/site [ruin|eternal|dead_fire|shrine|mine|grove]`, `/learn` (all blueprints).
