@@ -97,16 +97,16 @@ export function makeGen(seed) {
       s.lights.push([s.x, s.y, 2]);
     },
     mine(s, rnd) {
-      s.R = 10;
+      s.R = 7;
       const carved = new Set();
       const carve = (x, y) => carved.add(K(x, y));
-      const inside = (x, y) => Math.abs(x - s.x) <= 7 && Math.abs(y - s.y) <= 7;
+      const inside = (x, y) => Math.abs(x - s.x) <= 4 && Math.abs(y - s.y) <= 4;
       const dirs = [[0, 1], [-1, 0], [0, -1], [1, 0]];
       const side = Math.floor(rnd() * 4);
       const [ix, iy] = dirs[side];
       // entrance tunnel from the edge to the middle
-      let x = s.x - ix * 9, y = s.y - iy * 9;
-      for (let i = 0; i < 9; i++) {
+      let x = s.x - ix * 6, y = s.y - iy * 6;
+      for (let i = 0; i < 6; i++) {
         carve(x, y);
         if (rnd() < 0.5) carve(x + iy, y + ix);
         x += ix; y += iy;
@@ -114,10 +114,10 @@ export function makeGen(seed) {
       }
       // branches wander out from the middle
       const ends = [];
-      for (let b = 0; b < 4; b++) {
+      for (let b = 0; b < 3; b++) {
         let [dx, dy] = dirs[(side + b) % 4];
         let bx = x, by = y;
-        const len = 6 + Math.floor(rnd() * 5);
+        const len = 4 + Math.floor(rnd() * 4);
         for (let i = 0; i < len; i++) {
           carve(bx, by);
           if (rnd() < 0.45) carve(bx + dy, by + dx);
@@ -135,7 +135,7 @@ export function makeGen(seed) {
         for (let ey = -2; ey <= 2; ey++) for (let ex = -2; ex <= 2; ex++) {
           const wk = K(cx + ex, cy + ey);
           const out = -((cx + ex - s.x) * ix + (cy + ey - s.y) * iy); // distance out past the entrance side
-          if (!carved.has(wk) && out < 9 && Math.abs(cx + ex - s.x) <= 10 && Math.abs(cy + ey - s.y) <= 10) walls.add(wk);
+          if (!carved.has(wk) && out < 6 && Math.abs(cx + ex - s.x) <= 7 && Math.abs(cy + ey - s.y) <= 7) walls.add(wk);
         }
       }
       for (const wk of walls) {
