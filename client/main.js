@@ -443,7 +443,7 @@ function renderCraft() {
     const btn = document.createElement('button');
     btn.textContent = 'Craft';
     btn.disabled = !ok;
-    btn.onclick = () => { send({ t: 'craft', id: r.id }); audio.play('craft', { vol: 0.5 }); };
+    btn.dataset.recipe = r.id;
     row.append(btn);
     list.append(row);
   }
@@ -491,6 +491,15 @@ function pixelScroll(el) {
   return update;
 }
 const scrollUpdaters = [...document.querySelectorAll('.panel .scroll')].map(pixelScroll);
+
+// Craft on pointerdown via delegation: the list re-renders often (every inventory change),
+// so a click's mousedown and mouseup can land on different button elements and get lost.
+$('craft-list').addEventListener('pointerdown', (e) => {
+  const btn = e.target.closest('button[data-recipe]');
+  if (!btn || btn.disabled || e.button !== 0) return;
+  send({ t: 'craft', id: btn.dataset.recipe });
+  audio.play('craft', { vol: 0.5 });
+});
 
 const logEl = $('log');
 function log(text, c = '#ddd') {

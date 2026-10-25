@@ -104,3 +104,4 @@ kbd { font: inherit; }
 .pxbar { position: absolute; right: 8px; width: 10px; background: #0e0909; border: 2px solid #000; box-shadow: 0 0 0 2px var(--edge); }
 .pxbar .thumb { position: absolute; left: 0; right: 0; background: var(--edge-hi); border-top: 2px solid #ffb070; border-bottom: 2px solid #6a3a1a; cursor: grab; }
 .pxbar .thumb:hover, .pxbar .thumb.drag { background: #e8873a; }
+button:disabled { pointer-events: none; }
