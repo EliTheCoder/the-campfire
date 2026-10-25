@@ -1,3 +1,8 @@
+@font-face {
+  font-family: 'Tiny5';
+  src: url('/fonts/Tiny5-Regular.woff2') format('woff2');
+  font-display: block;
+}
 :root {
   --ink: #f3e6cf;
   --dim: #a8987e;
@@ -5,7 +10,7 @@
   --edge: #5a3a22;
   --edge-hi: #c97a3a;
   --fire: #ffa43a;
-  font-family: 'Pixelify Sans', ui-monospace, monospace;
+  font-family: 'Tiny5', ui-monospace, monospace;
   font-variant-ligatures: none;
 }
 * { box-sizing: border-box; }
@@ -105,3 +110,15 @@ kbd { font: inherit; }
 .pxbar .thumb { position: absolute; left: 0; right: 0; background: var(--edge-hi); border-top: 2px solid #ffb070; border-bottom: 2px solid #6a3a1a; cursor: grab; }
 .pxbar .thumb:hover, .pxbar .thumb.drag { background: #e8873a; }
 button:disabled { pointer-events: none; }
+
+* { font-synthesis: none; }
+#menu-panel { width: min(340px, calc(94vw / var(--ui, 1))); }
+.menu-buttons { display: flex; flex-direction: column; gap: 8px; }
+.menu-buttons p { margin: -4px 0 2px; }
+.menu-row { display: flex; align-items: center; gap: 8px; }
+.menu-row span { flex: 1; }
+button.alt { background: #2a1c16; color: var(--ink); }
+button.alt:hover { background: #3a281e; filter: none; }
+button.small-btn { padding: 4px 12px; }
+button.danger { background: linear-gradient(#c8553a, #8a2a1a); color: #fff0e0; }
+button.danger.confirm { background: #e0301a; animation: pulse 0.4s infinite alternate; }

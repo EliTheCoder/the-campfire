@@ -178,11 +178,6 @@ export function makeSprites() {
     g.r(2, 10, 2, 6, '#5a3d22'); g.r(12, 10, 2, 6, '#5a3d22');
     g.r(4, 4, 4, 2, '#8a8a92'); g.r(5, 3, 1, 1, '#aaaab2'); g.r(10, 3, 1, 4, '#6a4a2a'); g.r(9, 3, 3, 1, '#77757f');
   });
-  S.bld.sprouter = mk(16, 16, (g) => {
-    g.r(3, 5, 10, 11, '#6a4a2c'); g.r(4, 5, 1, 11, '#7e5a36'); g.r(11, 5, 1, 11, '#4a321e');
-    g.r(3, 7, 10, 1, '#55555e'); g.r(3, 13, 10, 1, '#55555e');
-    g.r(4, 5, 8, 1, '#2a2018');
-  });
   S.bld.rot_pit = mk(16, 16, (g) => {
     const rnd = mulberry32(12);
     blob(g, 8, 9, 7.5, 6, ['#6e6b78', '#5a5764', '#46434d', '#2c2a32'], rnd, 0.1);
@@ -193,12 +188,63 @@ export function makeSprites() {
     blob(g, 8, 9, 7, 7, ['#8a7a70', '#6e6058', '#54483f', '#2e2622'], rnd, 0.1);
     g.r(5, 9, 6, 5, '#1a1210'); g.r(6, 8, 4, 1, '#1a1210');
   });
+  // Fired-clay bricks: staggered courses, per-brick tone, lit top edge, shadowed bottom edge.
   S.bld.brick = mk(16, 16, (g) => {
-    g.r(0, 0, 16, 16, '#3e2a24');
-    for (let row = 0; row < 4; row++) {
-      const off = row % 2 ? 4 : 0;
-      for (let bx = -1; bx < 3; bx++) { const x = bx * 8 + off, y = row * 4; g.r(x + 1, y + 1, 6, 3, '#7a4a3a'); g.r(x + 1, y + 1, 6, 1, '#94604c'); }
+    const rnd = mulberry32(31);
+    g.r(0, 0, 16, 16, '#2e1d18');
+    const tones = ['#8c5440', '#7d4a38', '#96604a', '#84503c'];
+    const rows = [[0, 4], [5, 4], [10, 4]];
+    rows.forEach(([y, h], row) => {
+      const off = row % 2 ? -4 : 0;
+      for (let bx = off; bx < 16; bx += 8) {
+        const x0 = Math.max(0, bx + 1), x1 = Math.min(16, bx + 8);
+        if (x1 <= x0) continue;
+        g.r(x0, y + 1, x1 - x0, h - 1, tones[(rnd() * tones.length) | 0]);
+        g.r(x0, y + 1, x1 - x0, 1, '#b07a5e');
+        g.r(x0, y + h - 1, x1 - x0, 1, '#5e3426');
+        if (rnd() < 0.6) g.p(x0 + 1 + ((rnd() * (x1 - x0 - 2)) | 0), y + 2, '#a46a52');
+        if (rnd() < 0.4) g.p(x0 + 1 + ((rnd() * (x1 - x0 - 2)) | 0), y + h - 2, '#6a3c2c');
+      }
+    });
+    g.r(0, 15, 16, 1, '#1e1210');
+  });
+
+  // The finished Charcoal Kiln: one 3x3 structure (48x56, extends 8px above its footprint).
+  S.kilnBig = mk(48, 56, (g) => {
+    const rnd = mulberry32(77);
+    const cx = 24, base = 54;
+    // footing
+    g.r(2, 46, 44, 9, '#3a2620'); g.r(2, 46, 44, 1, '#5e3c30');
+    // dome: brick courses that narrow toward the top
+    for (let y = 8; y < 47; y++) {
+      const t = (y - 8) / 38;
+      const half = Math.round(8 + Math.sqrt(t) * 14);
+      const course = Math.floor((y - 8) / 4), inCourse = (y - 8) % 4;
+      for (let x = cx - half; x < cx + half; x++) {
+        const rel = (x - cx + half) / (2 * half);
+        const off = course % 2 ? 3 : 0;
+        const joint = ((x + off) % 6 === 0);
+        let col = inCourse === 3 || joint ? '#2e1d18' : inCourse === 0 ? '#b07a5e' : rnd() < 0.15 ? '#96604a' : '#84503c';
+        if (!(inCourse === 3 || joint)) {
+          if (rel > 0.72) col = inCourse === 0 ? '#8c5440' : '#6a3c2c';
+          else if (rel < 0.22 && inCourse !== 0) col = '#96604a';
+        }
+        g.p(x, y, col);
+      }
+      g.p(cx - half - 1, y, '#1e1210'); g.p(cx + half, y, '#1e1210');
     }
+    // chimney
+    g.r(30, 0, 8, 12, '#6a3c2c'); g.r(30, 0, 8, 1, '#b07a5e'); g.r(31, 1, 6, 2, '#1a1010');
+    g.r(29, 10, 10, 2, '#4a2a20');
+    // arched mouth
+    for (let y = 33; y < 47; y++) {
+      const half = y < 37 ? Math.round(Math.sqrt(Math.max(0, 16 - (37 - y) ** 2)) * 1.6) : 6;
+      g.r(cx - half, y, half * 2, 1, '#140c0a');
+    }
+    g.r(cx - 8, 46, 16, 1, '#5e3c30');
+    // keystone + soot
+    g.r(cx - 2, 30, 4, 3, '#a87060');
+    g.p(cx - 3, 31, '#3a2620'); g.p(cx + 3, 30, '#3a2620');
   });
   S.bld.hearth = mk(16, 16, (g) => {
     const rnd = mulberry32(14);
@@ -269,7 +315,6 @@ export function makeSprites() {
     g.p(14, 3, '#ffd27a');
   });
   S.icon.rot_pit = S.bld.rot_pit;
-  S.icon.sprouter = mk(16, 16, (g) => { g.ctx.drawImage(S.bld.sprouter, 0, 0); g.r(5, 6, 6, 1, '#3d6d8a'); });
   S.icon.hearth = S.bld.hearth;
   S.icon.brick = S.bld.brick;
   S.icon.kiln = mk(16, 16, (g) => { g.ctx.drawImage(S.bld.kiln, 0, 0); g.r(6, 10, 4, 3, '#e0601f'); g.r(7, 11, 2, 1, '#ffd27a'); });

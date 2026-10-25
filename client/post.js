@@ -9,7 +9,7 @@ void main() { v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5); gl_Position
 
 // 24-colour palette used by palette-snap mode. Tuned for fire against darkness.
 export const PALETTE = [
-  '#0b0a10', '#16131f', '#241d30', '#2e2a3e', '#3e3a52', '#5a5670', '#8a86a0', '#c8c4d8',
+  '#000000', '#0b0a10', '#16131f', '#241d30', '#2e2a3e', '#3e3a52', '#5a5670', '#8a86a0', '#c8c4d8',
   '#14241a', '#1f3a24', '#2f5a30', '#4a8040', '#7aa858',
   '#2a1a14', '#4a2c1c', '#6e4a2c', '#9a7048',
   '#5a1410', '#a82a18', '#e0561f', '#ff9a3a', '#ffd870', '#fff6d8',
@@ -54,8 +54,9 @@ void main() {
   float dith = bayer4(px);
   float q = clamp(L, 0.0, 1.0);
   vec3 lightCol = mix(vec3(0.35, 0.38, 0.62), vec3(1.0, 0.86, 0.68), smoothstep(0.1, 0.8, q));
-  float ambient = 0.018;
-  vec3 col = sc * (ambient + q * lightCol * 1.55 + glow * (0.45 + 0.8 * q));
+  // No ambient and no glow outside the light squares: darkness is truly black (screen
+  // brightness can't reveal it). Only light-emitting things (flames, embers) show there.
+  vec3 col = sc * (q * lightCol * 1.55 + glow * 1.25 * q);
 
   // Emissive + bloom. The bloom is pre-blurred at quarter resolution on the CPU side and
   // sampled once with linear filtering (was 36 full-res taps per pixel).
@@ -67,7 +68,7 @@ void main() {
 
   // Grade: lift shadows toward violet-blue, keep highlights warm, gentle tonemap.
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
-  col = mix(col, col * vec3(0.82, 0.86, 1.25) + vec3(0.004, 0.003, 0.012), (1.0 - smoothstep(0.0, 0.3, lum)) * 0.7);
+  col = mix(col, col * vec3(0.82, 0.86, 1.25), (1.0 - smoothstep(0.0, 0.3, lum)) * 0.7);
   col = mix(vec3(lum), col, 1.12);
   col = col / (1.0 + col * 0.18) * 1.12;
 

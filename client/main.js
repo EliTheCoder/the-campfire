@@ -151,7 +151,7 @@ $('restart').onclick = () => send({ t: 'restart' });
 const BINDS = {
   up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD',
   inventory: 'KeyI', craft: 'KeyC', help: 'KeyH', drop: 'KeyQ', revive: 'KeyR',
-  palette: 'KeyP', mute: 'KeyM', giveup: 'KeyG', uiDown: 'Minus', uiUp: 'Equal',
+  palette: 'KeyP', mute: 'KeyM', uiDown: 'Minus', uiUp: 'Equal',
 };
 let layoutMap = null;
 function keyLabel(code) {
@@ -166,9 +166,9 @@ function refreshKeyLabels() {
 navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); }).catch(() => {});
 refreshKeyLabels();
 
+const PANELS = ['inv-panel', 'craft-panel', 'help-panel', 'menu-panel'];
 const keys = new Set();
 let mouse = { x: 0, y: 0, l: false };
-let lastG = 0;
 
 addEventListener('keydown', (e) => {
   if (!st.world) return;
@@ -188,16 +188,16 @@ addEventListener('keydown', (e) => {
   if (c === 'Tab' || c === BINDS.inventory) { e.preventDefault(); toggle('inv-panel'); }
   if (c === BINDS.craft) toggle('craft-panel');
   if (c === BINDS.help) toggle('help-panel');
-  if (c === 'Escape') for (const id of ['inv-panel', 'craft-panel', 'help-panel']) $(id).hidden = true;
-  if (c === BINDS.drop) send({ t: 'drop', slot: st.sel });
+  if (c === 'Escape') {
+    const open = PANELS.filter((id) => !$(id).hidden);
+    if (open.length && !(open.length === 1 && open[0] === 'menu-panel')) for (const id of PANELS) $(id).hidden = true;
+    else toggle('menu-panel');
+  }
+  if (c === BINDS.drop) send({ t: 'drop', slot: st.sel, all: e.shiftKey, x: st.hover?.x, y: st.hover?.y });
   if (c === BINDS.revive) send({ t: 'revive' });
   if (c === 'F2') { e.preventDefault(); R.setLow(!R.low); log(`Graphics: ${R.low ? 'low (2D, fastest)' : 'full (WebGL effects)'}. [F2] to switch.`, '#aaa'); }
   if (c === BINDS.palette) { R.palette = !R.palette; log(`Palette mode ${R.palette ? 'on' : 'off'}.`, '#aaa'); }
-  if (c === BINDS.giveup) {
-    const now = performance.now();
-    if (now - lastG < 1500) { send({ t: 'giveup' }); lastG = 0; } else { lastG = now; log(`Press ${K('giveup')} again to give in to the dark (drops your items).`, '#aaa'); }
-  }
-  st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
+  st.uiBlocking = PANELS.some((id) => !$(id).hidden);
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouse.l = false; });
@@ -207,22 +207,42 @@ function toggle(id) {
   el.hidden = !el.hidden;
   audio.play(el.hidden ? 'close' : 'open', { vol: 0.45 });
   if (id === 'craft-panel' && !el.hidden) renderCraft();
+  if (id === 'menu-panel' && !el.hidden) renderMenu();
   for (const u of scrollUpdaters) u();
   if (id === 'inv-panel') { st.pick = -1; renderInv(); }
-  st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
+  st.uiBlocking = PANELS.some((id) => !$(id).hidden);
 }
 
 // Game input lives on whichever canvas is showing (WebGL, or the low-graphics 2D one).
 for (const cv of [$('gl'), $('lo')]) {
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
   cv.addEventListener('mousedown', (e) => {
+    if (e.button === 1) e.preventDefault(); // no autoscroll / paste on middle click
     if (!st.world || st.me.dead) return;
+    if (e.button === 1) { pickBlock(); return; }
     if (e.button === 0) mouse.l = true;
     if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
   });
   cv.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); audio.play('tick', { vol: 0.3 }); });
 }
 addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
+addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+
+// Middle click, Minecraft-style: select the item for what you're pointing at. If it's in the
+// hotbar, select that slot; if it's only in your inventory, swap it into the current slot.
+function pickBlock() {
+  const h = st.hover, w = st.world;
+  if (!h) return;
+  const b = w.getB(h.x, h.y), f = w.getFeature(h.x, h.y);
+  const item = b ? BUILDINGS[b.t].item : f && FEATURES[f.t]?.loose;
+  if (!item) return;
+  const idx = st.inv.findIndex((s) => s?.item === item);
+  if (idx < 0) return;
+  if (idx < HOTBAR) st.sel = idx;
+  else send({ t: 'swap', a: st.sel, b: idx });
+  renderInv();
+  audio.play('tick', { vol: 0.4 });
+}
 addEventListener('mouseup', (e) => { if (e.button === 0) { mouse.l = false; st.harvest = null; } });
 
 // ---------------- movement (client-predicted) ----------------
@@ -354,14 +374,39 @@ function updateTooltip(x, y, inReach) {
     const b = w.getB(x, y);
     const f = w.getFeature(x, y);
     const d = w.drops.get(`${x},${y}`);
-    if (b) html = `<b>${BUILDINGS[b.t].name}</b><br>${buildingInfo(w, b, x, y)}<br><span class="dim">Hold LMB: pick up</span>`;
+    const kilnPart = b?.t === 'brick' ? formedKilnCore(w, x, y) : null;
+    if (kilnPart) html = `<b>Charcoal Kiln</b><br>${buildingInfo(w, kilnPart[2], kilnPart[0], kilnPart[1])}`;
+    else if (b) html = `<b>${BUILDINGS[b.t].name}</b><br>${buildingInfo(w, b, x, y)}${b.t === 'kiln' && b.ok ? '' : '<br><span class="dim">Hold LMB: pick up</span>'}`;
     else if (f) html = `<b>${FEATURES[f.t].name}</b>${featureHint(f)}`;
     else if (d?.length) html = `<b>Dropped items</b><br>${d.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}<br><span class="dim">Walk over to pick up</span>`;
-    if (!lit && !html) html = '';
+    else {
+      const sel = st.inv[st.sel], it = sel && ITEMS[sel.item];
+      if ((it?.place === 'kindling' || it?.place === 'sapling') && w.ground(x, y) !== 'water') html = `<span class="dim">RMB: plant ${it.name}</span>${placeHint(w, it.place, x, y)}`;
+    }
   }
   if (!html) { tip.hidden = true; return; }
   if (!inReach) html += '<br><span class="dim">(out of reach)</span>';
   placeTip(tip, html);
+}
+
+const AMBER = (s) => `<span style="color:#ffb070">${s}</span>`;
+function formedKilnCore(w, x, y) {
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const c = w.getB(x + dx, y + dy); if (c?.t === 'kiln' && c.ok) return [x + dx, y + dy, c]; }
+  return null;
+}
+// Preview what a building would connect to if placed here.
+function placeHint(w, type, x, y) {
+  const t = w.feedTargets(x, y, type);
+  if (t.length) return '<br>' + AMBER(type === 'kindling' ? 'Will feed its leaves to the Rot Pit beside it' : 'Will feed its logs to the Kiln beside it');
+  if (type === 'kindling' || type === 'sapling') return `<br><span class="dim">Tip: plant it right beside a ${type === 'kindling' ? 'Rot Pit' : 'Kiln'} to feed it automatically</span>`;
+  return '';
+}
+function countFeeders(w, x, y, b) {
+  const ring = [];
+  if (b.t === 'kiln') for (let i = -1; i <= 1; i++) ring.push([x + i, y - 2], [x + i, y + 2], [x - 2, y + i], [x + 2, y + i]);
+  else for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ring.push([x + dx, y + dy]);
+  const want = b.t === 'kiln' ? 'sapling' : 'kindling';
+  return ring.filter(([px, py]) => w.getB(px, py)?.t === want).length;
 }
 
 function featureHint(f) {
@@ -371,7 +416,7 @@ function featureHint(f) {
     case 'bare_tree': return axe ? '<br>Hold LMB: chop for logs' : '<br><span class="dim">Needs an axe.</span>';
     case 'stump': return '<br>Hold LMB: pry up a stick';
     case 'bush': return '<br>Hold LMB: gather leaves';
-    case 'picked_bush': return '<br><span class="dim">Regrowing...</span>';
+    case 'picked_bush': return '<br><span class="dim">Regrowing...</span><br>Hold LMB: clear it away';
     case 'rock': return '<br>Hold LMB: gather stone';
     case 'rubble': return '<br>Hold LMB: gather stone';
     case 'chest': return '<br>RMB: open';
@@ -392,14 +437,27 @@ function buildingInfo(w, b, x, y) {
     : '<span class="dim">Not connected: needs an ember root directly beside it (up/down/left/right). Output stays here.</span>';
   switch (b.t) {
     case 'torch': return b.fuel > 0 ? (b.conn ? 'Fed by the roots - burns forever' : `Fuel: ${Math.ceil(b.fuel)}s <span class="dim">(RMB with fuel to top up)</span>`) : 'Burnt out. RMB with fuel to relight, or pick up the charred stick.';
-    case 'root': return b.g < 1 ? `Growing... ${pct(b.g)}` : w.rootPowered(x, y) ? 'Glowing with the fire\'s heat' : '<span style="color:#e0705a">Dark - the fire is too weak to reach this far</span>';
-    case 'kindling': return (b.g < 1 ? `Growing ${pct(b.g)} (needs light)` : 'Sheds leaves') + '<br>' + link + outStr(b);
-    case 'sapling': return (b.g < 1 ? `Growing ${pct(b.g)} (needs light)` : 'Sheds sticks and the odd log') + '<br>' + link + outStr(b);
-    case 'sprouter': return `Rainwater: ${Math.round(b.water)}%<br>${link}${outStr(b)}`;
-    case 'rot_pit': return `Leaves: ${b.in}/20 <span class="dim">(RMB with leaves)</span><br>Rotting: ${pct(b.p)}<br>${link}${outStr(b)}`;
+    case 'root':
+      if (b.g < 1) return `Growing... ${pct(b.g)}`;
+      if (w.rootPowered(x, y)) return 'Glowing with the fire\'s heat';
+      if (w.rootDistAt(x, y) === undefined) return '<span style="color:#e0705a">Not connected - link it back to the fire with more roots</span>';
+      return '<span style="color:#e0705a">Dark - the fire is too weak to reach this far</span>';
+    case 'kindling': case 'sapling': {
+      const grow = b.g < 1 ? `Growing ${pct(b.g)} (needs light)` : b.t === 'kindling' ? 'Sheds leaves' : 'Sheds sticks and the odd log';
+      const feeds = w.feedTargets(x, y, b.t).length;
+      const fed = feeds ? AMBER(b.t === 'kindling' ? 'Feeding its leaves to the Rot Pit beside it' : 'Feeding its logs to the Kiln beside it') : '';
+      return grow + '<br>' + (fed ? fed + (b.t === 'sapling' ? '<br>' + link : '') : link) + outStr(b);
+    }
+    case 'rot_pit': {
+      const n = countFeeders(w, x, y, b);
+      const feeders = n ? AMBER(`Fed by ${n} Kindling Bush${n > 1 ? 'es' : ''} beside it`) : '<span class="dim">Plant Kindling Seeds right beside it and they feed it leaves</span>';
+      return `Leaves: ${b.in}/20 <span class="dim">(RMB with leaves)</span><br>Rotting: ${pct(b.p)}<br>${feeders}<br>${link}${outStr(b)}`;
+    }
     case 'kiln': {
-      if (!b.ok) { let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && w.getB(x + dx, y + dy)?.t !== 'brick') n++; return `<span style="color:#9fd8ff">Needs ${n} more Stone Brick${n > 1 ? 's' : ''} around it</span>`; }
-      return `Logs: ${b.in}/10 <span class="dim">(RMB with logs)</span><br>${b.conn ? `Baking: ${pct(b.p)}` : '<span style="color:#e0705a">Needs an ember root touching its walls</span>'}${outStr(b)}`;
+      if (!b.ok) { let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && w.getB(x + dx, y + dy)?.t !== 'brick') n++; return AMBER(`Needs ${n} more Stone Brick${n > 1 ? 's' : ''} around it`) + '<br><span class="dim">Hold LMB: pick up</span>'; }
+      const n = countFeeders(w, x, y, b);
+      const feeders = n ? AMBER(`Fed by ${n} Grove Tree${n > 1 ? 's' : ''} beside its walls`) : '<span class="dim">Plant Saplings beside its walls and they feed it logs</span>';
+      return `Logs: ${b.in}/10 <span class="dim">(RMB with logs)</span><br>${b.conn ? `Baking: ${pct(b.p)}` : '<span style="color:#e0705a">Needs an ember root touching its walls</span>'}<br>${feeders}${outStr(b)}<br><span class="dim">Hold LMB: break it (drops all its bricks)</span>`;
     }
     case 'hearth': return Math.max(Math.abs(x), Math.abs(y)) <= 1 ? 'Holding heat in: the fire burns slower' : '<span class="dim">Must touch the campfire</span>';
     case 'workbench': return 'Stand nearby to craft advanced things';
@@ -514,6 +572,31 @@ $('craft-list').addEventListener('pointerdown', (e) => {
   send({ t: 'craft', id: btn.dataset.recipe });
   audio.play('craft', { vol: 0.5 });
 });
+
+// ---------------- Esc menu ----------------
+let giveupArmed = 0;
+function renderMenu() {
+  $('m-gfx').textContent = `Graphics: ${R.low ? 'Low (fast)' : 'Full'}`;
+  $('m-sound').textContent = `Sound: ${audio.muted ? 'Off' : 'On'}`;
+  const g = $('m-giveup');
+  const armed = performance.now() - giveupArmed < 3000;
+  g.textContent = st.me.dead ? 'You are already gone...' : armed ? 'Click again to confirm' : 'Give in to the dark';
+  g.classList.toggle('confirm', armed);
+  g.disabled = st.me.dead;
+}
+$('m-resume').onclick = () => toggle('menu-panel');
+$('m-help').onclick = () => { toggle('menu-panel'); toggle('help-panel'); };
+$('m-gfx').onclick = () => { R.setLow(!R.low); renderMenu(); };
+$('m-sound').onclick = () => { audio.toggleMute(); renderMenu(); };
+const nudgeUI = (f) => { uiNudge = Math.max(0.6, Math.min(2, uiNudge * f)); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); };
+$('m-ui-down').onclick = () => nudgeUI(0.9);
+$('m-ui-up').onclick = () => nudgeUI(1.1);
+$('m-giveup').onclick = () => {
+  if (performance.now() - giveupArmed < 3000) { send({ t: 'giveup' }); giveupArmed = 0; toggle('menu-panel'); }
+  else { giveupArmed = performance.now(); setTimeout(renderMenu, 3050); }
+  renderMenu();
+};
+$('m-leave').onclick = () => { $('menu-panel').hidden = true; st.ws?.close(); };
 
 const logEl = $('log');
 function log(text, c = '#ddd') {

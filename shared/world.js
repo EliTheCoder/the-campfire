@@ -125,6 +125,23 @@ export class World {
     return Math.min(4, n);
   }
 
+  // Machine-to-machine feeding: plants hand their output straight to a neighbouring machine.
+  // Returns the consumers a producer of type t at (x, y) feeds, as [x, y, building] (kiln = its core).
+  feedTargets(x, y, t) {
+    const want = t === 'kindling' ? 'rot_pit' : t === 'sapling' ? 'kiln' : null;
+    if (!want) return [];
+    const out = [];
+    for (const [dx, dy] of N4) {
+      const nx = x + dx, ny = y + dy;
+      let nb = this.getB(nx, ny), cx = nx, cy = ny;
+      if (nb?.t === 'brick') {
+        for (const [ex, ey] of N8) { const c = this.getB(nx + ex, ny + ey); if (c?.t === 'kiln') { nb = c; cx = nx + ex; cy = ny + ey; break; } }
+      }
+      if (nb?.t === want && !out.some((o) => o[2] === nb)) out.push([cx, cy, nb, nx, ny]);
+    }
+    return out;
+  }
+
   // Kiln multiblock: 8 bricks around the core
   kilnComplete(x, y) {
     for (const [dx, dy] of N8) if (this.getB(x + dx, y + dy)?.t !== 'brick') return false;

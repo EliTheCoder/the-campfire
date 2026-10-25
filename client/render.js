@@ -26,7 +26,7 @@ export function createRenderer(glCanvas, overlay, S) {
   const lmx = lmc.getContext('2d', { willReadFrequently: true });
   let lmImg = null;
 
-  const R = { scale: 3, W: 0, H: 0, camX: 0, camY: 0, parts: [], flash: 0, shake: 0, palette: false, floats: [], software: !!post?.software };
+  const R = { scale: 3, W: 0, H: 0, camX: 0, camY: 0, parts: [], hops: [], flash: 0, shake: 0, palette: false, floats: [], software: !!post?.software };
   R.setLow = (v) => {
     R.low = !!v || !post;
     glCanvas.hidden = R.low; lo.hidden = !R.low;
@@ -76,6 +76,26 @@ export function createRenderer(glCanvas, overlay, S) {
     } else if (kind === 'death') {
       for (let i = 0; i < 40; i++) P({ x: a * 16, y: b * 16, vx: (Math.random() - 0.5) * 50, vy: -10 - Math.random() * 40, life: 1 + Math.random() * 1.5, col: Math.random() < 0.5 ? '#5a6aa8' : '#9ab8ff', emit: true, drag: 1.5 });
       R.shake = 0.4;
+    } else if (kind === 'hop') {
+      // an item arcing from a plant into the machine beside it
+      R.hops.push({ x0: a * 16 + 8, y0: b * 16 + 6, x1: c * 16 + 8, y1: e[4] * 16 + 8, item: e[5], t: 0 });
+    } else if (kind === 'drop') {
+      for (let i = 0; i < 5; i++) P({ x: a * 16 + 8 + (Math.random() - 0.5) * 8, y: b * 16 + 12, vx: (Math.random() - 0.5) * 30, vy: -10 - Math.random() * 15, g: 80, life: 0.35, col: '#8a7a60' });
+    } else if (kind === 'forge') {
+      // embers spiral in from the 3x3 and fuse
+      for (let i = 0; i < 70; i++) {
+        const ang = Math.random() * Math.PI * 2, d = 18 + Math.random() * 14;
+        const sx = a * 16 + 8 + Math.cos(ang) * d, sy = b * 16 + 8 + Math.sin(ang) * d;
+        const life = 0.5 + Math.random() * 0.4;
+        P({ x: sx, y: sy, vx: (a * 16 + 8 - sx) / life, vy: (b * 16 + 8 - sy) / life, life, col: Math.random() < 0.5 ? '#ffb070' : '#ffe9a8', emit: true });
+      }
+      setTimeout(() => {
+        for (let i = 0; i < 40; i++) P({ x: a * 16 + 8, y: b * 16 + 4, vx: (Math.random() - 0.5) * 120, vy: -20 - Math.random() * 90, g: 120, life: 0.6 + Math.random() * 0.5, col: ['#b07a5e', '#84503c', '#ffb070'][(Math.random() * 3) | 0], emit: Math.random() < 0.4 });
+        R.flash = Math.max(R.flash, 0.25); R.shake = Math.max(R.shake, 0.25);
+      }, 650);
+    } else if (kind === 'shatter') {
+      for (let i = 0; i < 60; i++) P({ x: a * 16 + 8 + (Math.random() - 0.5) * 40, y: b * 16 + 8 + (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 140, vy: -40 - Math.random() * 100, g: 260, life: 0.5 + Math.random() * 0.5, size: 2, col: ['#8c5440', '#5e3426', '#b07a5e', '#2e1d18'][(Math.random() * 4) | 0] });
+      R.shake = Math.max(R.shake, 0.35);
     } else if (kind === 'revive') {
       for (let i = 0; i < 60; i++) P({ x: 8, y: 6, vx: (Math.random() - 0.5) * 140, vy: -20 - Math.random() * 120, g: 80, life: 0.8 + Math.random(), col: Math.random() < 0.5 ? '#9ab8ff' : '#fff6d8', emit: true });
       R.flash = 0.35;
@@ -214,7 +234,7 @@ export function createRenderer(glCanvas, overlay, S) {
         const f = w.getFeature(x, y);
         if (f) drawFeature(w, f, x, y, t);
         const b = w.getB(x, y);
-        if (b && b.t !== 'root') drawBuilding(w, b, x, y, t);
+        if (b && b.t !== 'root' && !(b.t === 'brick' && formedKilnAt(w, x, y))) drawBuilding(w, b, x, y, t);
       }
       for (const p of living) if (Math.floor(p.ry + 0.3) === y) drawPlayer(st, p, t);
     }
@@ -238,6 +258,12 @@ export function createRenderer(glCanvas, overlay, S) {
       else { const s = Math.max(1, Math.round(p.size)); ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s); }
     }
     sc.globalAlpha = 1; ec.globalAlpha = 1;
+    R.hops = R.hops.filter((hp) => (hp.t += dt * 2.5) < 1);
+    for (const hp of R.hops) {
+      const x = hp.x0 + (hp.x1 - hp.x0) * hp.t, y = hp.y0 + (hp.y1 - hp.y0) * hp.t - Math.sin(hp.t * Math.PI) * 10;
+      sc.drawImage(S.icon[hp.item], 0, 0, 16, 16, Math.round(x) - 4, Math.round(y) - 4, 8, 8);
+      ec.fillStyle = '#ffb070'; ec.fillRect(Math.round(x), Math.round(y) - 4, 1, 1);
+    }
 
     // ---------- lighting ----------
     const lmW = x1 - x0 + 1, lmH = y1 - y0 + 1;
@@ -288,7 +314,18 @@ export function createRenderer(glCanvas, overlay, S) {
         sq(tx, ty, 0, 0.12, 0); // freezing: barely see yourself
       }
     }
-    for (let i = 0; i < lv.length; i++) lightData[i] = Math.max(0, Math.min(255, lv[i] * 255));
+    // Penumbra: tiles touching real light are barely visible; everything further out is pure black.
+    for (let y = 0; y < lmH; y++) for (let x = 0; x < lmW; x++) {
+      const i = y * lmW + x;
+      if (lv[i] > 0) continue;
+      let near = false;
+      for (let ey = -1; ey <= 1 && !near; ey++) for (let ex = -1; ex <= 1; ex++) {
+        const xx = x + ex, yy = y + ey;
+        if (xx >= 0 && yy >= 0 && xx < lmW && yy < lmH && lv[yy * lmW + xx] > 0.3) { near = true; break; }
+      }
+      if (near) lv[i] = -0.07; // negative = penumbra marker, resolved below
+    }
+    for (let i = 0; i < lv.length; i++) lightData[i] = Math.max(0, Math.min(255, Math.abs(lv[i]) * 255));
     const cxs = R.W / 2, cys = R.H / 2;
     lights.sort((a, b) => Math.hypot(a.x - cxs, a.y - cys) - Math.hypot(b.x - cxs, b.y - cys));
 
@@ -314,7 +351,7 @@ export function createRenderer(glCanvas, overlay, S) {
     for (let i = 0; i < lmW * lmH; i++) {
       const L = lightData[i] / 255;
       d[i * 4] = 10; d[i * 4 + 1] = 7; d[i * 4 + 2] = 16;
-      d[i * 4 + 3] = Math.round((1 - Math.min(1, 0.02 + L * 1.1)) * 250);
+      d[i * 4 + 3] = L <= 0 ? 255 : Math.round((1 - Math.min(1, L * 1.1)) * 250);
     }
     lmx.putImageData(lmImg, 0, 0);
     lc.drawImage(lmc, ox, oy, lmW * TILE, lmH * TILE);
@@ -421,16 +458,8 @@ export function createRenderer(glCanvas, overlay, S) {
         if (lit) drawFlame(ec, px + 8, py + 5, 4, b.fuel < 20 ? 3 : 5, b.conn ? FLAME_PALETTES[2] : TORCH_PAL, t, x * 1.7 + y);
         break;
       }
-      case 'kindling': sc.drawImage(S.bld.kindling[b.g < 0.4 ? 0 : b.g < 1 ? 1 : 2], px, py); outIcon(b, px, py, t); break;
-      case 'sapling': sc.drawImage(S.bld.sapling[b.g < 1 ? 0 : 1], px, py - 4); outIcon(b, px, py - 4, t); break;
-      case 'sprouter': {
-        sc.drawImage(S.bld.sprouter, px, py);
-        const lvl = Math.round((b.water / 100) * 9);
-        if (lvl > 0) { sc.fillStyle = '#3d6d8a'; sc.fillRect(px + 4, py + 6, 8, 1); sc.fillStyle = '#2a4f6a'; sc.fillRect(px + 12 - 0, py + 15 - lvl, 1, lvl); }
-        if (b.p > 0.2) { sc.fillStyle = '#8a6440'; sc.fillRect(px + 7, py + 5 - Math.round(b.p * 4), 1, Math.round(b.p * 4)); sc.fillStyle = '#4f8d44'; sc.fillRect(px + 8, py + 4 - Math.round(b.p * 4), 1, 1); }
-        outIcon(b, px, py, t);
-        break;
-      }
+      case 'kindling': sc.drawImage(S.bld.kindling[b.g < 0.4 ? 0 : b.g < 1 ? 1 : 2], px, py); outIcon(b, px, py, t); drawFeedLinks(w, b, x, y, t); break;
+      case 'sapling': sc.drawImage(S.bld.sapling[b.g < 1 ? 0 : 1], px, py - 4); outIcon(b, px, py - 4, t); drawFeedLinks(w, b, x, y, t); break;
       case 'rot_pit': {
         sc.drawImage(S.bld.rot_pit, px, py);
         if (b.in > 0) {
@@ -442,13 +471,21 @@ export function createRenderer(glCanvas, overlay, S) {
         break;
       }
       case 'kiln': {
-        sc.drawImage(S.bld.kiln, px, py);
-        if (b.ok && b.conn && b.in >= 2) {
-          const pal = FLAME_PALETTES[1];
-          ec.fillStyle = pal[2]; ec.fillRect(px + 5, py + 10, 6, 4);
-          drawFlame(ec, px + 8, py + 13, 5, 4, pal, t, x);
+        if (!b.ok) { sc.drawImage(S.bld.kiln, px, py); break; }
+        // Formed: the whole 3x3 is one structure.
+        const kx = px - TILE, ky = py - TILE - 8;
+        sc.drawImage(S.kilnBig, kx, ky);
+        const working = b.conn && b.in >= 2;
+        const pal = FLAME_PALETTES[1];
+        if (working) {
+          ec.fillStyle = pal[3]; ec.fillRect(kx + 19, ky + 38, 10, 8);
+          ec.fillStyle = pal[2]; ec.fillRect(kx + 20, ky + 41, 8, 5);
+          drawFlame(ec, kx + 24, ky + 46, 9, 6, pal, t, x);
+          if (Math.random() < 0.08) R.parts.push({ x: kx + 34, y: ky - 1, vx: (Math.random() - 0.5) * 4, vy: -10, g: 0, size: 2, grow: 1.5, emit: false, life: 2.5, max: 2.5, drag: 0, col: '#4a4652', a: 0.4 });
+        } else if (b.in > 0 || w.fire.fuel > 0) {
+          ec.fillStyle = '#3a140a'; ec.fillRect(kx + 20, ky + 43, 8, 3);
         }
-        outIcon(b, px, py, t);
+        outIcon(b, kx + 16, ky + 12, t);
         break;
       }
       case 'hearth': {
@@ -460,6 +497,26 @@ export function createRenderer(glCanvas, overlay, S) {
         break;
       }
       default: { const spr = S.bld[b.t]; if (spr) sc.drawImage(Array.isArray(spr) ? spr[0] : spr, px, py); }
+    }
+  }
+
+  function formedKilnAt(w, x, y) {
+    for (const [dx, dy] of N8) { const c = w.getB(x + dx, y + dy); if (c?.t === 'kiln' && c.ok) return true; }
+    return false;
+  }
+
+  // Little chevrons on the shared edge when a plant feeds the machine beside it (#5).
+  function drawFeedLinks(w, b, x, y, t) {
+    for (const [, , , ex, ey] of w.feedTargets(x, y, b.t)) {
+      const dx = ex - x, dy = ey - y;
+      const mx = x * TILE + 8 + dx * 8, my = y * TILE + 8 + dy * 8;
+      const pulse = (Math.sin(t * 5 + x + y) + 1) / 2;
+      ec.fillStyle = pulse > 0.5 ? '#ffb070' : '#a85a2a';
+      for (let i = -1; i <= 1; i++) {
+        // arrow pointing from producer to consumer
+        const ax = dx ? mx - dx * Math.abs(i) : mx + i, ay = dy ? my - dy * Math.abs(i) : my + i;
+        ec.fillRect(Math.round(ax), Math.round(ay), 1, 1);
+      }
     }
   }
 
@@ -497,13 +554,16 @@ export function createRenderer(glCanvas, overlay, S) {
       for (const [dx, dy] of N8) {
         if (w.getB(x + dx, y + dy)?.t === 'brick') continue;
         const [sx, sy] = toS((x + dx) * TILE, (y + dy) * TILE);
-        oc.globalAlpha = 0.35 + 0.15 * Math.sin(t * 4);
+        oc.globalAlpha = 0.16 + 0.06 * Math.sin(t * 3);
         oc.drawImage(S.icon.brick, sx, sy, TILE * s, TILE * s);
-        oc.globalAlpha = 0.8;
-        oc.strokeStyle = '#9fd8ff'; oc.lineWidth = Math.max(1, s / 2);
-        oc.setLineDash([s * 2, s * 2]);
-        oc.strokeRect(sx + 1, sy + 1, TILE * s - 2, TILE * s - 2);
-        oc.setLineDash([]);
+        oc.globalAlpha = 0.45;
+        oc.fillStyle = '#e0a060';
+        const c = s * 3, lw = s;
+        for (const [ax, ay] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+          const X = sx + ax * (TILE * s - lw), Y = sy + ay * (TILE * s - lw);
+          oc.fillRect(ax ? X - c + lw : X, Y, c, lw);
+          oc.fillRect(X, ay ? Y - c + lw : Y, lw, c);
+        }
       }
       oc.globalAlpha = 1;
     }
@@ -538,7 +598,7 @@ export function createRenderer(glCanvas, overlay, S) {
     }
 
     // names
-    oc.font = `${Math.round(7 * dpr * (R.ui || 1))}px "Pixelify Sans", monospace`;
+    oc.font = `${Math.round(13 * dpr * (R.ui || 1))}px "Tiny5", monospace`;
     oc.textAlign = 'center';
     for (const p of st.players.values()) {
       if (p.dead || p.id === st.myId) continue;
@@ -548,7 +608,7 @@ export function createRenderer(glCanvas, overlay, S) {
     }
 
     // floating texts
-    oc.font = `${Math.round(8 * dpr * (R.ui || 1))}px "Pixelify Sans", monospace`;
+    oc.font = `${Math.round(13 * dpr * (R.ui || 1))}px "Tiny5", monospace`;
     R.floats = R.floats.filter((f) => (f.life -= dt) > 0);
     for (const f of R.floats) {
       const [sx, sy] = toS(f.x * TILE, f.y * TILE - (1.6 - f.life) * 10);

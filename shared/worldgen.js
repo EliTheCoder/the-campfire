@@ -60,23 +60,15 @@ export function makeGen(seed) {
     }
     if (ground(x, y) === 'water') return null;
     const cheb = Math.max(Math.abs(x), Math.abs(y));
-    if (cheb <= 1) return null;
+    if (cheb <= 6) return null; // the campsite starts empty (13x13 around the fire)
     const forest = fbm(seed + 3, x, y, 14);
-    if (cheb > 4 && hash3(seed, x, y, 1) < (forest > 0.62 ? 0.06 : 0.008)) return { t: 'tree' };
+    if (hash3(seed, x, y, 1) < (forest > 0.62 ? 0.03 : 0.004)) return { t: 'tree' };
     const h = hash3(seed, x, y, 2);
-    if (cheb <= 4) {
-      // The campsite gets a denser starter scatter so the first minutes are playable.
-      if (h < 0.04) return { t: 'bush' };
-      if (h < 0.16) return { t: 'leaf' };
-      if (h < 0.24) return { t: 'stick' };
-      if (h < 0.27) return { t: 'pebble' };
-      return null;
-    }
-    if (h < 0.012) return { t: 'bush' };
-    if (h < 0.018 && cheb > 3) return { t: 'rock' };
-    if (h < 0.048) return { t: 'leaf' };
-    if (h < 0.063) return { t: 'stick' };
-    if (h < 0.069) return { t: 'pebble' };
+    if (h < 0.006) return { t: 'bush' };
+    if (h < 0.009) return { t: 'rock' };
+    if (h < 0.024) return { t: 'leaf' };
+    if (h < 0.0315) return { t: 'stick' };
+    if (h < 0.0345) return { t: 'pebble' };
     return null;
   }
 

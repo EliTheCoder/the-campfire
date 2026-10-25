@@ -4,8 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>The Campfire</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/client/style.css" />
 </head>
 <body>
@@ -34,7 +32,20 @@
     <div id="inv-panel" class="panel" hidden>
       <h2>Inventory</h2>
       <div id="inv-grid"></div>
-      <p class="small dim">Click two slots to swap. The first row is your hotbar. [<kbd data-key="drop"></kbd>] drops the selected stack.</p>
+      <p class="small dim">Click two slots to swap. The first row is your hotbar. [<kbd data-key="drop"></kbd>] drops one of the selected item, Shift+[<kbd data-key="drop"></kbd>] the whole stack.</p>
+    </div>
+    <div id="menu-panel" class="panel" hidden>
+      <h2>Menu</h2>
+      <div class="menu-buttons">
+        <button id="m-resume">Resume</button>
+        <button id="m-help" class="alt">Help &amp; controls</button>
+        <button id="m-gfx" class="alt"></button>
+        <button id="m-sound" class="alt"></button>
+        <div class="menu-row"><span>UI size</span><button id="m-ui-down" class="alt small-btn">-</button><button id="m-ui-up" class="alt small-btn">+</button></div>
+        <button id="m-giveup" class="danger">Give in to the dark</button>
+        <p class="small dim" id="m-giveup-note">Respawn at the fire. You drop everything where you stand.</p>
+        <button id="m-leave" class="alt">Leave game</button>
+      </div>
     </div>
     <div id="craft-panel" class="panel" hidden>
       <h2>Crafting</h2>
@@ -54,9 +65,9 @@
           <p><b>Controls</b></p>
           <p><kbd data-key="up,left,down,right"></kbd>: move · Hold LMB: gather / pick up · RMB: use / place / feed<br/>
           1-8 / wheel: hotbar · Tab / <kbd data-key="inventory"></kbd>: inventory · <kbd data-key="craft"></kbd>: craft · <kbd data-key="revive"></kbd>: revive friend<br/>
-          <kbd data-key="drop"></kbd>: drop stack · Enter: chat · <kbd data-key="palette"></kbd>: palette mode · <kbd data-key="mute"></kbd>: mute · <kbd data-key="uiDown,uiUp" data-sep="/"></kbd>: UI size · F2: low graphics · <kbd data-key="giveup"></kbd> <kbd data-key="giveup"></kbd>: give up</p>
+          <kbd data-key="drop"></kbd>: drop one (Shift: stack) · Middle click: pick block · Enter: chat · <kbd data-key="palette"></kbd>: palette mode · <kbd data-key="mute"></kbd>: mute · <kbd data-key="uiDown,uiUp" data-sep="/"></kbd>: UI size · F2: low graphics · Esc: menu</p>
           <p><b>Automation</b></p>
-          <p>Machines touching a powered root send their output down it into the fire. Kindling Bushes and Grove Trees grow fuel in light. Rot Pits turn leaves into peat. Rain Sprouters turn rain into sticks. Kilns (from ruin blueprints) bake logs into charcoal.</p>
+          <p>Machines touching a powered root send their output down it into the fire. Kindling Bushes and Grove Trees grow fuel in light. Rot Pits turn leaves into peat; plants touching one feed it directly. Kilns (from ruin blueprints) bake logs into charcoal.</p>
           <p class="dim">Ruins out in the dark hold chests. Many have an eternal flame that never goes out.</p>
         </div>
       </div></div>

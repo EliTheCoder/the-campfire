@@ -13,7 +13,6 @@ function newBuilding(t) {
     case 'root': return { t, g: 0 };
     case 'kindling': return { t, g: 0, p: 0, out: {} };
     case 'sapling': return { t, g: 0, p: 0, q: 0, out: {} };
-    case 'sprouter': return { t, water: 0, p: 0, out: {} };
     case 'rot_pit': return { t, in: 0, p: 0, out: {} };
     case 'kiln': return { t, in: 0, p: 0, out: {}, ok: false, conn: false };
     default: return { t };
@@ -63,6 +62,7 @@ export class Game {
     this.dB = new Set();
     this.dD = new Set();
     this.sigs = new Map();
+    this.dropLocks = new Map(); // tile -> id of the player who threw it (they can't re-grab it until they step off)
     this.fx = [];
     this.offline.clear();
     for (const p of this.players.values()) { this.resetPlayer(p); this.welcome(p); }
@@ -229,7 +229,16 @@ export class Game {
       case 'craft': this.craft(p, m.id); break;
       case 'drop': {
         const s = p.inv[m.slot | 0];
-        if (s && !p.dead) { this.addDrop(Math.floor(p.x), Math.floor(p.y), s.item, s.n); p.inv[m.slot | 0] = null; p.invDirty = true; }
+        if (!s || p.dead) break;
+        let tx = Math.floor(p.x), ty = Math.floor(p.y);
+        if (Number.isInteger(m.x) && Number.isInteger(m.y) && this.inReach(p, m.x, m.y) && !this.world.isSolid(m.x, m.y)) { tx = m.x; ty = m.y; }
+        const n = m.all ? s.n : 1;
+        this.addDrop(tx, ty, s.item, n);
+        this.dropLocks.set(key(tx, ty), p.id);
+        s.n -= n;
+        if (s.n <= 0) p.inv[m.slot | 0] = null;
+        p.invDirty = true;
+        this.fx.push(['drop', tx, ty]);
         break;
       }
       case 'swap': {
@@ -285,6 +294,9 @@ export class Game {
       this.fx.push(['break', x, y]);
       return;
     }
+    // A finished kiln is one structure: breaking any part of it breaks all of it.
+    const core = b?.t === 'kiln' ? [x, y, b] : b?.t === 'brick' ? this.findKilnCore(x, y) : null;
+    if (core && core[2].ok) { this.shatterKiln(core[0], core[1], core[2]); return; }
     if (b) {
       this.give(p, BUILDINGS[b.t].item, 1);
       for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.give(p, it, n);
@@ -312,6 +324,7 @@ export class Game {
         this.setF(x, y, { t: 'stump' });
         break;
       case 'stump': this.give(p, 'stick', 1); this.setF(x, y, null); break;
+      case 'picked_bush': this.give(p, 'stick', 1); this.setF(x, y, null); break;
       case 'bush':
         this.give(p, 'leaf', 3); if (rnd < 0.25) this.give(p, 'seed', 1);
         this.setF(x, y, { t: 'picked_bush', regrow: w.time + 120 });
@@ -328,6 +341,15 @@ export class Game {
         else return;
     }
     this.fx.push(['harvest', x, y, f.t]);
+  }
+
+  shatterKiln(x, y, b) {
+    for (const [dx, dy] of N8) { this.setB(x + dx, y + dy, null); this.addDrop(x + dx, y + dy, 'brick', 1); }
+    this.setB(x, y, null);
+    this.addDrop(x, y, 'kiln', 1);
+    if (b.in) this.addDrop(x, y, 'log', b.in);
+    for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.addDrop(x, y, it, n);
+    this.fx.push(['shatter', x, y]);
   }
 
   findKilnCore(x, y) {
@@ -412,17 +434,11 @@ export class Game {
     if (w.ground(x, y) === 'water' || w.getB(x, y) || (x === 0 && y === 0)) return;
     const f = w.getFeature(x, y);
     if (f && !FEATURES[f.t]?.loose) { this.tell(p, 'Something is in the way.'); return; }
-    const tx = Math.floor(p.x), ty = Math.floor(p.y);
-    if (!w.sharedLit(x, y) && Math.max(Math.abs(x - tx), Math.abs(y - ty)) > 1) { this.tell(p, 'Too dark to build there.'); return; }
     if (BUILDINGS[type].solid) {
       for (const q of this.players.values()) {
         if (q.dead) continue;
         if (q.x + PLAYER_HALF > x && q.x - PLAYER_HALF < x + 1 && q.y + PLAYER_HALF > y && q.y - PLAYER_HALF < y + 1) { this.tell(p, 'Someone is standing there.'); return; }
       }
-    }
-    if (type === 'root') {
-      const ok = N4.some(([dx, dy]) => (x + dx === 0 && y + dy === 0) || w.getB(x + dx, y + dy)?.t === 'root');
-      if (!ok) { this.tell(p, 'Ember roots must grow out of the fire or another root.', '#f0a060'); return; }
     }
     if ((type === 'kindling' || type === 'sapling') && w.ground(x, y) === 'floor') { this.tell(p, 'Nothing grows on stone.'); return; }
     if (f) { this.give(p, FEATURES[f.t].loose, 1); this.setF(x, y, null); }
@@ -491,7 +507,7 @@ export class Game {
           if (Math.random() < 0.7) { W.s = 'rain_warn'; W.t = 15; this.say('The air grows heavy and damp... rain is coming.', '#8fb8e0'); }
           else { W.s = 'wind_warn'; W.t = 8; this.say('The old trees begin to creak... a windfall is coming.', '#c8d890'); }
           break;
-        case 'rain_warn': W.s = 'rain'; W.t = 60 + Math.random() * 40; this.say('Rain! Flames burn faster - but plants and sprouters drink it up.', '#8fb8e0'); break;
+        case 'rain_warn': W.s = 'rain'; W.t = 60 + Math.random() * 40; this.say('Rain! Flames burn faster - but plants grow faster and rot pits work quicker.', '#8fb8e0'); break;
         case 'wind_warn': W.s = 'wind'; W.t = 25; this.say('WINDFALL! Branches are crashing down everywhere - go gather!', '#c8d890'); break;
         default: W.s = 'clear'; W.t = 150 + Math.random() * 150; this.say('The weather calms.', '#aaa');
       }
@@ -546,7 +562,7 @@ export class Game {
       const f = w.getFeature(tx, ty);
       if (f && FEATURES[f.t]?.loose) { this.give(p, FEATURES[f.t].loose, 1); this.setF(tx, ty, null); this.fx.push(['pickup', tx, ty]); }
       const k = key(tx, ty), d = w.drops.get(k);
-      if (d) {
+      if (d && this.dropLocks.get(k) !== p.id) {
         const rest = [];
         for (const [item, n] of d) { const left = addItem(p.inv, item, n); if (left) rest.push([item, left]); }
         if (rest.length) w.drops.set(k, rest); else w.drops.delete(k);
@@ -556,6 +572,10 @@ export class Game {
     }
     for (const p of this.players.values()) {
       if (p.invDirty) { this.send(p.ws, { t: 'inv', inv: p.inv }); p.invDirty = false; }
+    }
+    for (const [k, id] of this.dropLocks) {
+      const q = this.players.get(id);
+      if (!q || q.dead || key(Math.floor(q.x), Math.floor(q.y)) !== k || !w.drops.has(k)) this.dropLocks.delete(k);
     }
     // Nobody left to tend the fire: everyone rises after a moment, at a cost.
     if (this.players.size && !alive) {
@@ -580,12 +600,15 @@ export class Game {
   deliver(x, y, b, item) {
     const w = this.world;
     const outs = this.outlets(x, y, b);
-    for (const [nx, ny] of outs) {
+    for (const [nx, ny, ox, oy] of outs) {
       let nb = w.getB(nx, ny);
       if (nb?.t === 'brick') nb = this.findKilnCore(nx, ny)?.[2];
       if (!nb || nb === b) continue;
-      if (nb.t === 'rot_pit' && item === 'leaf' && nb.in < 20) { nb.in++; return true; }
-      if (nb.t === 'kiln' && item === 'log' && nb.in < 10) { nb.in++; return true; }
+      if ((nb.t === 'rot_pit' && item === 'leaf' && nb.in < 20) || (nb.t === 'kiln' && item === 'log' && nb.in < 10)) {
+        nb.in++;
+        this.fx.push(['hop', ox, oy, nx, ny, item]);
+        return true;
+      }
     }
     if (!ITEMS[item].fuel) return false;
     for (const [nx, ny] of outs) if (nx === 0 && ny === 0 && w.fire.fuel > 0) { this.feedFire(item); return true; }
@@ -639,15 +662,13 @@ export class Game {
             }
           }
           break;
-        case 'sprouter':
-          if (rain) b.water = Math.min(100, b.water + dt * 4);
-          if (b.water >= 10 && (b.p += dt / 4 * (rain ? 1.5 : 1)) >= 1) { b.p = 0; b.water -= 10; addOut(b, 'stick'); }
-          break;
         case 'rot_pit':
           if (b.in >= 4 && (b.p += dt / (rain ? 10 : 20)) >= 1) { b.p = 0; b.in -= 4; addOut(b, 'peat'); }
           break;
         case 'kiln': {
+          const was = b.ok;
           b.ok = w.kilnComplete(x, y);
+          if (b.ok && !was) { this.fx.push(['forge', x, y]); this.say('The bricks fuse into a Charcoal Kiln!', '#ffb070'); }
           b.conn = b.ok && this.outlets(x, y, b).some(([nx, ny]) => w.rootPowered(nx, ny) || (nx === 0 && ny === 0 && w.fire.fuel > 0));
           if (b.ok && b.conn && b.in >= 2) {
             this.draw += dt * 0.25;
@@ -696,7 +717,7 @@ export class Game {
       t: 'snap', time: r1(w.time),
       fire: { fuel: r1(w.fire.fuel), temp: r2(w.fire.temp), demand: w.fire.demand, burn: r2(w.fire.burn) },
       weather: { s: this.weather.s, t: Math.round(this.weather.t) },
-      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: r2(p.x), y: r2(p.y), f: p.face, m: p.moving, dead: p.dead, held: r1(p.held), cold: r2(p.cold) })),
+      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, color: p.color, x: r2(p.x), y: r2(p.y), f: p.face, m: p.moving, dead: p.dead, held: p.held > 0 ? Math.max(0.1, r1(p.held)) : 0, cold: r2(p.cold) })),
       pk: this.packets.map((k) => [k.id, k.x, k.y, k.nx, k.ny, r2(k.p), k.item]),
     };
     if (this.fx.length) { msg.fx = this.fx; this.fx = []; }
