@@ -26,8 +26,9 @@ function sig(b) {
   for (const k in b) {
     if (k === 'cd') continue;
     const v = b[k];
-    // floor, not round: 0.95 and 1.0 must differ or 'finished growing' never gets sent
-    if (typeof v === 'number') s += k + (v > 2 ? Math.floor(v / 5) : Math.floor(v * 10)) + ';';
+    // Each band gets its own prefix so values can't collide (e.g. 3 leaves vs 0 leaves, or 0.05s
+    // vs burnt out). Counts are exact; fractions are bucketed; 0 and 1 (done) are always distinct.
+    if (typeof v === 'number') s += k + (Number.isInteger(v) ? 'i' + v : v > 2 ? 'a' + Math.floor(v / 5) : 'b' + Math.floor(v * 10)) + ';';
     else if (typeof v === 'object') s += k + JSON.stringify(v) + ';';
     else s += k + v + ';';
   }

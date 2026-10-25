@@ -571,6 +571,18 @@ function updateHUD(dt) {
   if ((craftRefresh += dt) > 0.5 && !$('craft-panel').hidden) { craftRefresh = 0; renderCraft(); }
 }
 
+// Placed torches burn down locally between server updates (which only arrive every few seconds),
+// so the countdown is smooth and a torch goes dark on time even if its final update is late.
+function burnTorchesLocally(dt) {
+  const w = st.world;
+  const mult = st.weather.s === 'rain' ? TORCH.rainMult : 1;
+  for (const b of w.bld.values()) {
+    if (b.t !== 'torch' || b.conn || b.fuel <= 0) continue;
+    b.fuel = Math.max(0, b.fuel - dt * mult);
+    if (b.fuel === 0) w.lightDirty = true;
+  }
+}
+
 // ---------------- audio ----------------
 function updateAudio(dt) {
   const w = st.world, me = st.me;
@@ -609,6 +621,7 @@ function frame(now) {
       p.rx += (p.x - p.rx) * k; p.ry += (p.y - p.ry) * k;
     }
     for (const pk of st.packets) pk.p = Math.min(1, pk.p + dt * PACKET_SPEED);
+    burnTorchesLocally(dt);
     if ((sendAcc += dt) >= 0.05) { sendAcc = 0; if (!st.me.dead) send({ t: 'pos', x: +st.me.x.toFixed(3), y: +st.me.y.toFixed(3), f: st.me.f, m: st.me.m }); }
     updateHover(dt);
     updateHUD(dt);
