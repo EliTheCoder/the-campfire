@@ -697,6 +697,17 @@ function closePanel(id) {
   audio.play('close', { vol: 0.45 });
   st.uiBlocking = PANELS.some((p) => !$(p).hidden);
 }
+// Clicking outside a menu-style panel closes it (inventory/crafting stay open so the hotbar
+// still works). The click is swallowed so it doesn't also act on the world behind it.
+const CLOSE_ON_OUTSIDE = ['wiki-panel', 'settings-panel', 'controls-panel', 'credits-panel', 'menu-panel'];
+document.addEventListener('pointerdown', (e) => {
+  const open = CLOSE_ON_OUTSIDE.filter((id) => !$(id).hidden);
+  if (!open.length || e.target.closest('.panel')) return;
+  e.preventDefault(); e.stopPropagation();
+  for (const id of open) {
+    if (id === 'menu-panel') toggle('menu-panel'); else closePanel(id);
+  }
+}, true);
 document.addEventListener('click', (e) => {
   const open = e.target.closest('[data-open]');
   if (open) openPanel(open.dataset.open, open.closest('.panel')?.id);
