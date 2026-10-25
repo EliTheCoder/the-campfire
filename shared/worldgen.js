@@ -31,12 +31,17 @@ export const NOTES = [
 // Each chunk may hold one "site": ruin, dead campfire, shrine, collapsed mine or ancient grove.
 export function makeGen(seed) {
   const siteCache = new Map();
+  // Every world has one eternal-flame ruin in a chunk next to the fire's (~24-34 tiles out),
+  // close enough to actually use.
+  const RING = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+  const nearEternal = RING[Math.floor(hash3(seed, 0, 0, 20) * RING.length)];
 
   function site(cx, cy) {
     const k = cx + ',' + cy;
     if (siteCache.has(k)) return siteCache.get(k);
     let s = null;
-    if (!(cx === 0 && cy === 0) && hash3(seed, cx, cy, 11) < 0.34) {
+    const near = cx === nearEternal[0] && cy === nearEternal[1];
+    if (near || (!(cx === 0 && cy === 0) && hash3(seed, cx, cy, 11) < 0.34)) {
       const d = Math.hypot(cx, cy) * CHUNK;
       const r = hash3(seed, cx, cy, 18);
       const w = d < 40 ? [['ruin', 0.4], ['dead_fire', 0.35], ['grove', 0.25]]
@@ -44,9 +49,10 @@ export function makeGen(seed) {
         : [['ruin', 0.2], ['dead_fire', 0.15], ['grove', 0.15], ['shrine', 0.25], ['mine', 0.25]];
       let acc = 0, type = w[0][0];
       for (const [t, p] of w) { acc += p; if (r < acc) { type = t; break; } }
+      if (near) type = 'ruin';
       const x = cx * CHUNK + Math.floor((hash3(seed, cx, cy, 12) - 0.5) * 4);
       const y = cy * CHUNK + Math.floor((hash3(seed, cx, cy, 13) - 0.5) * 4);
-      s = { type, x, y, d, feats: new Map(), grounds: new Map(), lights: [], R: 0 };
+      s = { type, x, y, d, feats: new Map(), grounds: new Map(), lights: [], R: 0, near };
       const rnd = mulberry32(Math.floor(hash3(seed, cx, cy, 19) * 2 ** 31));
       BUILD[type](s, rnd);
     }
@@ -57,7 +63,7 @@ export function makeGen(seed) {
   const BUILD = {
     ruin(s, rnd) {
       s.R = 4;
-      s.eternal = rnd() < 0.7;
+      s.eternal = rnd() < 0.7 || s.near;
       const door = Math.floor(rnd() * 4);
       const doors = [[0, -3], [3, 0], [0, 3], [-3, 0]];
       for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
