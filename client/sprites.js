@@ -649,13 +649,92 @@ export function makeSprites() {
     g.r(8, 10, 32, 8, '#4a4652'); g.r(6, 8, 36, 3, '#7a7686'); g.r(6, 8, 36, 1, '#9a96a6'); g.r(10, 14, 28, 2, '#2a2a30');
     g.r(20, 46, 8, 12, '#1a1820');
   }), 0, -24];
-  S.formed.heart_seed = [mk(48, 64, (g) => {
-    const rnd = mulberry32(362);
-    g.r(19, 34, 10, 26, '#5a2a1a'); g.r(26, 34, 3, 26, '#3a1a10'); g.r(14, 56, 20, 6, '#4a2216');
-    blob(g, 24, 22, 23, 20, ['#4aa868', '#2e7a48', '#1e5432', '#0e2a18'], rnd, 0.3);
-  }), 0, -16];
+  // Heart Grove: one tree per growth stage, drawn at whole pixels (no blurry scaling). The
+  // sprite is 48x72 and its bottom 48 rows sit exactly on the 3x3 footprint; roots crawl out
+  // over the moss ring. glow: pixels the renderer makes pulse (heart hollow, hanging fruit).
+  S.heartTree = [0.3, 0.55, 0.8, 1].map((k, stage) => heartTree(k, stage));
+  S.formed.heart_seed = [S.heartTree[3], 0, -24];
 
   return S;
+}
+
+function heartTree(k, stage) {
+  const glow = [];
+  const BARK = ['#a8744a', '#7a4e30', '#553220', '#2a160e'];
+  const spr = mk(48, 72, (g) => {
+    const rnd = mulberry32(362 + stage);
+    const bx = 24, by = 55; // trunk base, just below the core tile's centre
+    // A thick tapering stroke along a curve, lit from the top-left: the outline goes down
+    // first for the whole stroke, then the shaded body, so overlapping stamps stay clean.
+    const stroke = (pts, w0, w1) => {
+      const samples = [];
+      for (let i = 0; i <= 80; i++) {
+        const t = i / 80, seg = Math.min(pts.length - 2, Math.floor(t * (pts.length - 1))), u = t * (pts.length - 1) - seg;
+        const [x0, y0] = pts[seg], [x1, y1] = pts[seg + 1];
+        samples.push([x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, (w0 + (w1 - w0) * t) / 2]);
+      }
+      for (const pass of [0, 1]) for (const [x, y, r0] of samples) {
+        const r = pass ? r0 : r0 + 1;
+        for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+          if (Math.hypot(dx, dy) > r) continue;
+          const lit = -dx - dy * 0.5 + (rnd() - 0.5) * 1.2;
+          g.p(x + dx, y + dy, !pass ? BARK[3] : lit > r0 * 0.45 ? BARK[0] : lit < -r0 * 0.35 ? BARK[2] : BARK[1]);
+        }
+      }
+    };
+    // roots: out over the moss, toward the corners and sides (longer as it grows)
+    const L = 0.35 + 0.65 * k;
+    for (const [ex, ey, w] of [[3, 69, 2], [45, 70, 2], [1, 60, 1], [47, 61, 1], [15, 71, 1], [34, 71, 1]]) {
+      const tx = bx + (ex - bx) * L, ty = by + (ey - by) * L;
+      // they leave the trunk heading down, then bend out along the ground
+      stroke([[bx + Math.sign(ex - bx) * 2, by - 3], [bx + (tx - bx) * 0.35, by + 2 + (rnd() - 0.5) * 2], [tx, ty]], w + 1 * k, 1);
+    }
+    // twisted trunk
+    const top = by - Math.round(6 + 22 * k);
+    const trunk = [];
+    for (let i = 0; i <= 6; i++) { const t = i / 6; trunk.push([bx + Math.sin(t * 3.2 + 0.6) * 2.5 * k, by - (by - top) * t]); }
+    stroke(trunk, 3 + 6 * k, 2 + 2 * k);
+    // bark grooves
+    for (let y = top + 3; y < by - 1; y += 2) if (rnd() < 0.7) { const t = (by - y) / (by - top); g.p(bx + Math.sin(t * 3.2 + 0.6) * 2.5 * k + (rnd() < 0.5 ? -1 : 1), y, BARK[3]); }
+    // branches into the canopy
+    if (k > 0.5) for (const dir of [-1, 1]) stroke([[bx, top + 8], [bx + dir * 7 * k, top + 2], [bx + dir * 12 * k, top - 3]], 3, 1);
+    // the heart: a hollow in the trunk with a warm core
+    if (k > 0.5) {
+      const hy = Math.round(by - (by - top) * 0.45), hx = Math.round(bx + Math.sin(0.45 * 3.2 + 0.6) * 2.5 * k);
+      g.r(hx - 2, hy - 2, 4, 5, '#140806'); g.r(hx - 1, hy - 3, 2, 7, '#140806');
+      g.p(hx - 2, hy - 2, BARK[2]); g.p(hx + 1, hy - 2, BARK[2]); g.r(hx - 1, hy - 4, 2, 1, BARK[0]);
+      for (const [x, y, c] of [[hx - 1, hy - 1, '#ffb070'], [hx, hy - 1, '#ffd27a'], [hx - 1, hy, '#ff7a3a'], [hx, hy, '#ffb070'], [hx, hy + 1, '#c2401c']]) { g.p(x, y, c); glow.push([x, y, c]); }
+    }
+    // canopy: back clusters darker, front ones lit; teal-green, glowing at the edges
+    const LEAF_BACK = ['#2e8a62', '#1f6a4a', '#145036', '#082a1c'];
+    const LEAF = ['#7ae0a0', '#3fae72', '#24804e', '#0c3220'];
+    const cy = top - 4 * k;
+    const cl = (x, y, rx, ry, cols) => { if (rx >= 1.5) blob(g, bx + x * k, cy + y * k, rx * k, ry * k, cols, rnd, 0.35); };
+    if (stage === 0) {
+      // a sprout: two leaves
+      for (const dir of [-1, 1]) blob(g, bx + dir * 3, top, 3, 2, LEAF, rnd, 0.1);
+    } else {
+      cl(-13, 4, 10, 8, LEAF_BACK); cl(13, 4, 10, 8, LEAF_BACK); cl(0, -8, 13, 9, LEAF_BACK);
+      cl(-8, 0, 12, 9, LEAF); cl(9, 1, 12, 9, LEAF); cl(0, -5, 13, 10, LEAF);
+      // leaf clumps: little lit arcs with a shadow under each, so it reads as foliage
+      const isLeaf = (x, y) => { const c = g.ctx.getImageData(x, y, 1, 1).data; return c[3] && c[1] > 60 && c[1] > c[0] * 1.4; };
+      for (let i = 0; i < 70 * k; i++) {
+        const x = Math.round(bx + (rnd() - 0.5) * 44 * k), y = Math.round(cy + (rnd() - 0.65) * 24 * k);
+        if (!isLeaf(x - 1, y) || !isLeaf(x + 2, y + 1)) continue;
+        const up = y < cy - 2 * k;
+        g.p(x, y, up ? '#b8f8d0' : '#5ad890'); g.p(x + 1, y, up ? '#8aeab0' : '#3fae72');
+        g.p(x - 1, y + 1, LEAF[2]); g.p(x + 2, y + 1, LEAF[2]); g.p(x, y + 1, LEAF[3]); g.p(x + 1, y + 1, LEAF[3]);
+      }
+      // hanging glow-fruit under the canopy
+      if (k >= 0.8) for (const [fx, fy] of [[-15, 10], [-6, 11], [7, 12], [16, 9]]) {
+        const x = Math.round(bx + fx * k), y = Math.round(cy + fy * k);
+        g.p(x, y, '#145036'); g.p(x, y + 1, '#145036'); g.p(x, y + 2, '#2a8a60');
+        for (const [ox, oy, c] of [[0, 3, '#c8fff0'], [-1, 4, '#4ad8b0'], [0, 4, '#8af5d8'], [1, 4, '#4ad8b0'], [0, 5, '#2aa888']]) { g.p(x + ox, y + oy, c); glow.push([x + ox, y + oy, c]); }
+      }
+    }
+  });
+  spr.glow = glow;
+  return spr;
 }
 
 export function shadeColor(hex, amt) {

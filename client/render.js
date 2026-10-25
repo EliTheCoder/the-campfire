@@ -649,12 +649,13 @@ export function createRenderer(glCanvas, overlay, S) {
     const [spr, ox, oy] = formed;
     const fx = px - h * TILE + ox, fy = py - h * TILE + oy;
     if (b.t === 'heart_seed') {
-      // the grove's tree grows from a sprout to full size
-      const g = Math.max(0.25, b.g ?? 0);
-      const wdt = Math.round(spr.width * g), hgt = Math.round(spr.height * g);
-      sc.drawImage(spr, Math.round(px + 8 - wdt / 2), Math.round(py + 12 - hgt), wdt, hgt);
-      for (let i = 0; i < 6; i++) if (Math.sin(t * 2 + i * 1.7) > 0.3) { ec.fillStyle = i % 2 ? '#ffb070' : '#6af0b0'; ec.fillRect(Math.round(px + 8 - wdt / 3 + (i * wdt) / 9), Math.round(py + 12 - hgt * (0.3 + (i % 3) * 0.2)), 1, 1); }
-      outIcon(b, px, py - hgt + 12, t);
+      // the grove's tree grows through four stages; its bottom 48px cover the 3x3 footprint
+      const g = b.g ?? 0;
+      const tree = S.heartTree[g < 0.33 ? 0 : g < 0.66 ? 1 : g < 1 ? 2 : 3];
+      const tx = px - TILE, ty = py + 2 * TILE - tree.height;
+      sc.drawImage(tree, tx, ty);
+      for (const [gx, gy, c] of tree.glow) if (Math.sin(t * 1.6 + gx * 0.7 + gy) > -0.4) { ec.fillStyle = c; ec.fillRect(tx + gx, ty + gy, 1, 1); }
+      outIcon(b, px, ty + 6, t);
       return;
     }
     sc.drawImage(spr, fx, fy);
