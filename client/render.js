@@ -12,14 +12,29 @@ const TORCH_PAL = FLAME_PALETTES[1];
 export function createRenderer(glCanvas, overlay, S) {
   const scene = document.createElement('canvas');
   const emit = document.createElement('canvas');
-  const sc = scene.getContext('2d');
-  const ec = emit.getContext('2d');
+  // CPU-backed 2D canvases: they're small and get uploaded to WebGL every frame, and uploading
+  // a GPU-backed canvas forces a slow readback (very slow on software WebGL, e.g. Firefox on Linux).
+  const sc = scene.getContext('2d', { willReadFrequently: true });
+  const ec = emit.getContext('2d', { willReadFrequently: true });
   const oc = overlay.getContext('2d');
   let post = null;
   try { post = makePost(glCanvas); } catch (e) { console.error('WebGL post failed', e); }
-  const fallback = post ? null : glCanvas.getContext('2d');
+  // Low graphics: plain 2D compositing on its own canvas (a canvas can't have both GL and 2D contexts).
+  const lo = document.getElementById('lo');
+  const lc = lo.getContext('2d');
+  const lmc = document.createElement('canvas');
+  const lmx = lmc.getContext('2d', { willReadFrequently: true });
+  let lmImg = null;
 
-  const R = { scale: 3, W: 0, H: 0, camX: 0, camY: 0, parts: [], flash: 0, shake: 0, palette: false, floats: [] };
+  const R = { scale: 3, W: 0, H: 0, camX: 0, camY: 0, parts: [], flash: 0, shake: 0, palette: false, floats: [], software: !!post?.software };
+  R.setLow = (v) => {
+    R.low = !!v || !post;
+    glCanvas.hidden = R.low; lo.hidden = !R.low;
+    try { localStorage.setItem('campfire.low', R.low ? '1' : '0'); } catch {}
+  };
+  let savedLow = false;
+  try { savedLow = localStorage.getItem('campfire.low') === '1'; } catch {}
+  R.setLow(savedLow);
   let lightData = new Uint8Array(1);
 
   R.resize = () => {
@@ -27,11 +42,11 @@ export function createRenderer(glCanvas, overlay, S) {
     R.scale = Math.max(2, Math.round((innerHeight * dpr) / 280));
     R.W = Math.ceil((innerWidth * dpr) / R.scale);
     R.H = Math.ceil((innerHeight * dpr) / R.scale);
-    for (const c of [scene, emit, glCanvas]) { c.width = R.W; c.height = R.H; }
+    for (const c of [scene, emit, glCanvas, lo]) { c.width = R.W; c.height = R.H; }
     overlay.width = innerWidth * dpr; overlay.height = innerHeight * dpr;
     R.dpr = dpr;
     sc.imageSmoothingEnabled = false; ec.imageSmoothingEnabled = false;
-    if (fallback) fallback.imageSmoothingEnabled = false;
+    lc.imageSmoothingEnabled = false;
   };
   R.resize();
 
@@ -277,20 +292,49 @@ export function createRenderer(glCanvas, overlay, S) {
     const cxs = R.W / 2, cys = R.H / 2;
     lights.sort((a, b) => Math.hypot(a.x - cxs, a.y - cys) - Math.hypot(b.x - cxs, b.y - cys));
 
-    if (post) {
+    if (!R.low) {
       post.render({
         scene, emit, lightData, lmW, lmH, lmOriginX: x0 * TILE - camX, lmOriginY: y0 * TILE - camY, lights,
         time: t, rain: st.weather.s === 'rain' ? 1 : 0, cold: me.dead ? 0 : Math.min(1, me.cold / 6 + (me.freezing ? 0.25 : 0)),
         pal: R.palette, flash: R.flash, dead: me.dead ? 0.8 : 0,
       });
     } else {
-      fallback.drawImage(scene, 0, 0);
-      fallback.globalCompositeOperation = 'lighter';
-      fallback.drawImage(emit, 0, 0);
-      fallback.globalCompositeOperation = 'source-over';
+      drawLow(st, me, lmW, lmH, x0 * TILE - camX, y0 * TILE - camY, lights);
     }
     drawOverlay(st, t, dt);
   };
+
+  // Low-graphics compositor: same tile lighting as the shader, done with 2D canvas ops.
+  function drawLow(st, me, lmW, lmH, ox, oy, lights) {
+    lc.globalCompositeOperation = 'source-over';
+    lc.globalAlpha = 1;
+    lc.drawImage(scene, 0, 0);
+    if (lmc.width !== lmW || lmc.height !== lmH || !lmImg) { lmc.width = lmW; lmc.height = lmH; lmImg = lmx.createImageData(lmW, lmH); }
+    const d = lmImg.data;
+    for (let i = 0; i < lmW * lmH; i++) {
+      const L = lightData[i] / 255;
+      d[i * 4] = 10; d[i * 4 + 1] = 7; d[i * 4 + 2] = 16;
+      d[i * 4 + 3] = Math.round((1 - Math.min(1, 0.02 + L * 1.1)) * 250);
+    }
+    lmx.putImageData(lmImg, 0, 0);
+    lc.drawImage(lmc, ox, oy, lmW * TILE, lmH * TILE);
+    lc.globalCompositeOperation = 'lighter';
+    for (const l of lights.slice(0, 12)) {
+      const g = lc.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r);
+      const [r, gg, b] = l.c.map((v) => Math.round(v * 255));
+      g.addColorStop(0, `rgba(${r},${gg},${b},${(0.22 * l.i).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+      lc.fillStyle = g;
+      lc.fillRect(l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
+    }
+    lc.drawImage(emit, 0, 0);
+    lc.globalCompositeOperation = 'source-over';
+    const tint = (c, a) => { if (a > 0) { lc.globalAlpha = a; lc.fillStyle = c; lc.fillRect(0, 0, R.W, R.H); lc.globalAlpha = 1; } };
+    if (st.weather.s === 'rain') tint('#28406a', 0.15);
+    if (!me.dead) tint('#b8d8ff', Math.min(1, me.cold / 6 + (me.freezing ? 0.25 : 0)) * 0.35);
+    else tint('#141a34', 0.45);
+    tint('#ffb070', R.flash);
+  }
 
   // ---------- pieces ----------
   function fireStage(fuel) {

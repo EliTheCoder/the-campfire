@@ -10,8 +10,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; color: var(--ink); overflow: hidden; user-select: none; }
-#gl, #overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; }
-#gl { image-rendering: pixelated; }
+#gl, #lo, #overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+#gl, #lo { image-rendering: pixelated; }
 #overlay { pointer-events: none; }
 [hidden] { display: none !important; }
 .small { font-size: 12px; }

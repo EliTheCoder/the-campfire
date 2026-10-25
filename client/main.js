@@ -81,6 +81,7 @@ function onMsg(m) {
       $('connect').hidden = true; $('hud').hidden = false;
       $('over-screen').hidden = !m.over;
       renderInv();
+      if (R.software && !R.low && !st.softwareHinted) st.softwareHinted = true, log('Your browser is drawing WebGL in software, which is slow. Press [F2] for low graphics, or enable hardware acceleration.', '#ffcc66');
       if (!localStorage.getItem('campfire.helpSeen')) { $('help-panel').hidden = false; localStorage.setItem('campfire.helpSeen', '1'); }
       break;
     }
@@ -190,6 +191,7 @@ addEventListener('keydown', (e) => {
   if (c === 'Escape') for (const id of ['inv-panel', 'craft-panel', 'help-panel']) $(id).hidden = true;
   if (c === BINDS.drop) send({ t: 'drop', slot: st.sel });
   if (c === BINDS.revive) send({ t: 'revive' });
+  if (c === 'F2') { e.preventDefault(); R.setLow(!R.low); log(`Graphics: ${R.low ? 'low (2D, fastest)' : 'full (WebGL effects)'}. [F2] to switch.`, '#aaa'); }
   if (c === BINDS.palette) { R.palette = !R.palette; log(`Palette mode ${R.palette ? 'on' : 'off'}.`, '#aaa'); }
   if (c === BINDS.giveup) {
     const now = performance.now();
@@ -210,16 +212,18 @@ function toggle(id) {
   st.uiBlocking = !$('inv-panel').hidden || !$('craft-panel').hidden || !$('help-panel').hidden;
 }
 
-const gl = $('gl');
-gl.addEventListener('contextmenu', (e) => e.preventDefault());
+// Game input lives on whichever canvas is showing (WebGL, or the low-graphics 2D one).
+for (const cv of [$('gl'), $('lo')]) {
+  cv.addEventListener('contextmenu', (e) => e.preventDefault());
+  cv.addEventListener('mousedown', (e) => {
+    if (!st.world || st.me.dead) return;
+    if (e.button === 0) mouse.l = true;
+    if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
+  });
+  cv.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); audio.play('tick', { vol: 0.3 }); });
+}
 addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
-gl.addEventListener('mousedown', (e) => {
-  if (!st.world || st.me.dead) return;
-  if (e.button === 0) mouse.l = true;
-  if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
-});
 addEventListener('mouseup', (e) => { if (e.button === 0) { mouse.l = false; st.harvest = null; } });
-gl.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); audio.play('tick', { vol: 0.3 }); });
 
 // ---------------- movement (client-predicted) ----------------
 function walkable(w, tx, ty) {

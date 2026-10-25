@@ -19,7 +19,7 @@ export const PALETTE = [
 const FRAG = `
 precision mediump float;
 varying vec2 v_uv;
-uniform sampler2D u_scene, u_emit, u_light;
+uniform sampler2D u_scene, u_emit, u_light, u_bloom;
 uniform vec2 u_res, u_lmOrigin, u_lmSize;
 uniform vec4 u_ls[${MAX_LIGHTS}];
 uniform vec3 u_lc[${MAX_LIGHTS}];
@@ -57,18 +57,10 @@ void main() {
   float ambient = 0.018;
   vec3 col = sc * (ambient + q * lightCol * 1.55 + glow * (0.45 + 0.8 * q));
 
-  // Emissive + bloom.
-  vec3 bloom = vec3(0.0);
-  vec2 texel = 1.0 / u_res;
-  for (int i = 0; i < 12; i++) {
-    float a = float(i) * 0.5236;
-    vec2 dir = vec2(cos(a), sin(a));
-    bloom += texture2D(u_emit, v_uv + dir * texel * 3.0).rgb * 0.5;
-    bloom += texture2D(u_emit, v_uv + dir * texel * 7.0).rgb * 0.3;
-    bloom += texture2D(u_emit, v_uv + dir * texel * 13.0).rgb * 0.2;
-  }
-  bloom /= 12.0;
-  col += em + bloom * 0.9;
+  // Emissive + bloom. The bloom is pre-blurred at quarter resolution on the CPU side and
+  // sampled once with linear filtering (was 36 full-res taps per pixel).
+  vec3 bloom = texture2D(u_bloom, v_uv).rgb;
+  col += em + bloom * 1.1;
 
   // Rain: cooler, slightly darker world.
   col = mix(col, col * vec3(0.78, 0.86, 1.05), u_rain * 0.6);
@@ -136,7 +128,7 @@ export function makePost(canvas) {
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
   const U = {};
-  for (const n of ['u_scene', 'u_emit', 'u_light', 'u_res', 'u_lmOrigin', 'u_lmSize', 'u_ls', 'u_lc', 'u_n', 'u_time', 'u_rain', 'u_cold', 'u_pal', 'u_flash', 'u_dead', 'u_palette']) U[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['u_scene', 'u_emit', 'u_light', 'u_bloom', 'u_res', 'u_lmOrigin', 'u_lmSize', 'u_ls', 'u_lc', 'u_n', 'u_time', 'u_rain', 'u_cold', 'u_pal', 'u_flash', 'u_dead', 'u_palette']) U[n] = gl.getUniformLocation(prog, n);
   gl.uniform3fv(U.u_palette, new Float32Array(PALETTE.flatMap(hexToRgb)));
 
   const tex = (unit) => {
@@ -149,13 +141,42 @@ export function makePost(canvas) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
   };
-  const tScene = tex(0), tEmit = tex(1), tLight = tex(2);
-  gl.uniform1i(U.u_scene, 0); gl.uniform1i(U.u_emit, 1); gl.uniform1i(U.u_light, 2);
+  const tScene = tex(0), tEmit = tex(1), tLight = tex(2), tBloom = tex(3);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.uniform1i(U.u_scene, 0); gl.uniform1i(U.u_emit, 1); gl.uniform1i(U.u_light, 2); gl.uniform1i(U.u_bloom, 3);
+
+  // Bloom: downsample the emissive layer to 1/4 size and blur it there (cheap: ~1/16 the pixels).
+  const half = document.createElement('canvas'), small = document.createElement('canvas'), blur = document.createElement('canvas');
+  const cpu = { willReadFrequently: true };
+  const hc = half.getContext('2d', cpu), smc = small.getContext('2d', cpu), bc = blur.getContext('2d', cpu);
+  function makeBloom(emit) {
+    const w = Math.max(1, emit.width >> 1), h = Math.max(1, emit.height >> 1);
+    if (half.width !== w || half.height !== h) {
+      half.width = w; half.height = h;
+      small.width = blur.width = Math.max(1, w >> 1); small.height = blur.height = Math.max(1, h >> 1);
+    }
+    hc.drawImage(emit, 0, 0, w, h);
+    smc.drawImage(half, 0, 0, small.width, small.height);
+    bc.globalCompositeOperation = 'source-over';
+    bc.filter = 'none';
+    bc.fillStyle = '#000'; bc.fillRect(0, 0, blur.width, blur.height);
+    bc.globalCompositeOperation = 'lighter';
+    bc.globalAlpha = 0.55; bc.filter = 'blur(1px)'; bc.drawImage(small, 0, 0);
+    bc.globalAlpha = 0.7; bc.filter = 'blur(3px)'; bc.drawImage(small, 0, 0);
+    bc.globalAlpha = 1; bc.filter = 'none';
+    return blur;
+  }
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
   const ls = new Float32Array(MAX_LIGHTS * 4), lc = new Float32Array(MAX_LIGHTS * 3);
 
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const renderer = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+
   return {
+    renderer,
+    software: /llvmpipe|swiftshader|softpipe|software|basic render/i.test(renderer),
     // o: { scene, emit, lightData (Uint8Array), lmW, lmH, lmOriginX, lmOriginY, lights:[{x,y,r,i,c:[r,g,b]}], time, rain, cold, pal, flash, dead }
     render(o) {
       const w = o.scene.width, h = o.scene.height;
@@ -164,6 +185,8 @@ export function makePost(canvas) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, o.scene);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tEmit);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, o.emit);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tBloom);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, makeBloom(o.emit));
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tLight);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, o.lmW, o.lmH, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, o.lightData);
       const n = Math.min(MAX_LIGHTS, o.lights.length);
