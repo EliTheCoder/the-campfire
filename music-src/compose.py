@@ -51,40 +51,46 @@ CHORDS = [bar for _, sec in SECTIONS for bar in sec]
 BARS = len(CHORDS)
 
 # ---------------------------------------------------------------- melody
-# (beat within bar, note, length in beats) per bar; empty list = rest
+# One motif carries the whole tune: a long note, a quick step down, then two even steps -
+# "daaa-da dum dum" (dotted quarter, eighth, quarter, quarter). It comes back every other bar,
+# moved up or down the scale, so it's easy to remember and hum. Range stays ~A4-B5, mostly steps.
+# (beat within bar, note, length in beats) per bar; [] = rest
+def motif(a, b, c, d):
+    return [(0, a, 1.5), (1.5, b, 0.5), (2, c, 1), (3, d, 1)]
+
 MEL = {
-    'A': [
-        [(1, 'A5', 1.5), (2.5, 'F#5', 0.5), (3, 'E5', 1)],
-        [(0, 'F#5', 3), (3, 'D5', 1)],
-        [(0, 'B4', 2), (2, 'C#5', 1), (3, 'D5', 1)],
-        [(0, 'E5', 4)],
-        [(1, 'A5', 1), (2, 'B5', 1), (3, 'A5', 1)],
-        [(0, 'F#5', 2.5), (2.5, 'E5', 0.5), (3, 'D5', 1)],
-        [(0, 'E5', 1), (1, 'F#5', 1), (2, 'B4', 2)],
-        [(0, 'D5', 2), (2, 'C#5', 2)],
+    'A': [                                   # statement and answer
+        motif('F#5', 'E5', 'D5', 'A4'),      # Dmaj9      - the motif
+        [(0, 'D5', 3)],                      # Bm7        - let it ring
+        motif('E5', 'D5', 'B4', 'D5'),       # Gmaj7#11   - the motif, a step lower
+        [(0, 'C#5', 3)],                     # A/C#       - ring
+        motif('A5', 'G5', 'F#5', 'E5'),      # D/F#       - the motif, higher
+        [(0, 'D5', 2), (2, 'B4', 1), (3, 'D5', 1)],   # Gmaj9
+        motif('E5', 'F#5', 'G5', 'F#5'),     # Em9        - turned upward, building
+        [(0, 'E5', 2), (2, 'C#5', 2)],       # Asus4 -> A - leaning back home
     ],
-    "A'": [
-        [(2, 'D6', 2)],
-        [(0, 'C#6', 1), (1, 'B5', 1), (2, 'F#5', 2)],
-        [(1, 'A5', 1), (2, 'F#5', 2)],
-        [(0, 'E5', 2), (3, 'C#5', 1)],
-        [(0, 'D5', 1), (1, 'F#5', 1), (2, 'A5', 2)],
-        [(0, 'B5', 3), (3, 'A5', 1)],
-        [(0, 'G5', 2), (2, 'F#5', 2)],
+    "A'": [                                  # same opening, then it climbs
+        motif('F#5', 'E5', 'D5', 'A4'),
+        [(0, 'D5', 3)],
+        motif('E5', 'D5', 'B4', 'D5'),
+        [(0, 'C#5', 3)],
+        motif('A5', 'B5', 'A5', 'F#5'),      # the peak
+        [(0, 'B5', 2), (2, 'A5', 1), (3, 'F#5', 1)],
+        motif('G5', 'F#5', 'E5', 'D5'),
         [(0, 'E5', 4)],
     ],
-    'B': [
-        [(0, 'F#5', 2), (2, 'D5', 2)],
-        [(1, 'B4', 3)],
-        [(0, 'A4', 2), (2, 'C#5', 2)],
-        [(0, 'B4', 4)],
-        [(0, 'D5', 1), (1, 'E5', 1), (2, 'F#5', 2)],
-        [(0, 'C#5', 3), (3, 'B4', 1)],
-        [(0, 'B4', 2), (2, 'A4', 2)],
-        [],
+    'B': [                                   # the motif, remembered in minor
+        motif('D5', 'C#5', 'B4', 'A4'),      # Bm9
+        [(0, 'B4', 3)],                      # Gmaj7
+        motif('A4', 'B4', 'C#5', 'D5'),      # D/F#       - reaching up
+        [(0, 'E5', 3)],                      # Em7
+        motif('F#5', 'E5', 'D5', 'C#5'),     # Bm9
+        [(0, 'D5', 2), (2, 'B4', 2)],        # Gmaj7#11
+        motif('B4', 'A4', 'B4', 'C#5'),      # Asus2
+        [(0, 'E5', 2), (2, 'C#5', 2)],       # A
     ],
 }
-MEL["A''"] = MEL['A'][:7] + [[(0, 'D5', 1), (1, 'E5', 1), (2, 'C#5', 2)]]
+MEL["A''"] = MEL['A']
 MELODY = [bar for name, _ in SECTIONS for bar in MEL[name]]
 
 # ---------------------------------------------------------------- performance
