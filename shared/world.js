@@ -1,5 +1,5 @@
 import { FIRE, TORCH, ETERNAL_ROOT_REACH } from './constants.js';
-import { BUILDINGS, FEATURES, MULTIBLOCKS, WALL_OF, FIRE_STAGES, RING_BLOCKS, FEEDS } from './defs.js';
+import { BUILDINGS, FEATURES, MULTIBLOCKS, WALL_OF, FIRE_STAGES, RING_BLOCKS, FEEDS, stackMax } from './defs.js';
 import { makeGen } from './worldgen.js';
 
 export const key = (x, y) => x + ',' + y;
@@ -8,6 +8,21 @@ export const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 const LIGHT_BUILDINGS = new Set(['torch', 'glowmoss', 'watchfire']);
+export const CRATE_SLOTS = 16;
+
+// A crate's contents as slots. (Older saves stored a {item: n} map; convert it on first touch.)
+export function crateSlots(b) {
+  if (!b.slots) {
+    b.slots = new Array(CRATE_SLOTS).fill(null);
+    let i = 0;
+    for (const [item, n0] of Object.entries(b.store || {})) {
+      let n = n0;
+      while (n > 0 && i < CRATE_SLOTS) { const k = Math.min(n, stackMax(item)); b.slots[i++] = { item, n: k }; n -= k; }
+    }
+    delete b.store;
+  }
+  return b.slots;
+}
 
 // World state shared by server (authoritative) and client (mirror).
 export class World {
@@ -190,6 +205,31 @@ export class World {
       else if (this.getFeature(nx, ny)?.t === 'eternal') nets.add('e:' + key(nx, ny));
     }
     return nets;
+  }
+
+  // ---------- containers (anything you open with right-click) ----------
+  // Returns { x, y, kind: 'crate' | 'building' | 'eternal', title, b|f, slots } where each slot is
+  // { role: 'store' | 'in' | 'out', s: {item, n} | null, item?, cap? }. Slot order is the index the
+  // server's container ops use. Walls of a multiblock open their core.
+  containerAt(x, y) {
+    let b = this.getB(x, y);
+    if (b) {
+      const core = this.mbCoreFor(x, y);
+      if (core && MULTIBLOCKS[core[2].t]) [x, y, b] = core;
+      if (b.t === 'crate') return { x, y, kind: 'crate', b, title: 'Crate', slots: crateSlots(b).map((s) => ({ role: 'store', s })) };
+      const inSpec = b.t === 'rot_pit' ? ['leaf', 20] : MULTIBLOCKS[b.t]?.in;
+      if (!inSpec && !b.out) return null;
+      const slots = [];
+      if (inSpec) slots.push({ role: 'in', s: b.in > 0 ? { item: inSpec[0], n: b.in } : null, item: inSpec[0], cap: inSpec[1] });
+      for (const item of Object.keys(b.out || {}).sort()) if (b.out[item] > 0) slots.push({ role: 'out', s: { item, n: b.out[item] } });
+      return { x, y, kind: 'building', b, title: BUILDINGS[b.t].name, slots };
+    }
+    const f = this.getFeature(x, y);
+    if (f?.t === 'eternal') {
+      const slots = Object.keys(f.store || {}).sort().filter((i) => f.store[i] > 0).map((item) => ({ role: 'out', s: { item, n: f.store[item] } }));
+      return { x, y, kind: 'eternal', f, title: 'Eternal flame - cache', slots };
+    }
+    return null;
   }
 
   // ---------- multiblocks ----------

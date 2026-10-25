@@ -1,11 +1,10 @@
-import { World, key, unkey, N4, N8 } from '../shared/world.js';
+import { World, key, unkey, N4, N8, crateSlots, CRATE_SLOTS } from '../shared/world.js';
 import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, FIRE_STAGES, stackMax } from '../shared/defs.js';
 import { NOTES } from '../shared/worldgen.js';
 import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
 
 const OUT_CAP = 8;
-const CRATE_CAP = 400;
 const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -17,7 +16,7 @@ function newBuilding(t) {
     case 'sapling': return { t, g: 0, p: 0, q: 0, out: {} };
     case 'rot_pit': return { t, in: 0, p: 0, out: {} };
     case 'resin_tap': return { t, p: 0, out: {} };
-    case 'crate': return { t, store: {} };
+    case 'crate': return { t, slots: new Array(CRATE_SLOTS).fill(null) };
     case 'heart_seed': return { t, g: 0, p: 0, out: {}, ok: false };
     case 'watchfire': return { t, ok: false, lit: false };
     default: return MULTIBLOCKS[t] ? { t, in: 0, p: 0, out: {}, ok: false } : { t };
@@ -319,6 +318,9 @@ export class Game {
         break;
       }
       case 'move': this.invMove(p, m.a | 0, m.b | 0, m.n | 0); break;
+      case 'ctake': this.contTake(p, m.x | 0, m.y | 0, m.ci | 0, m.n | 0, Number.isInteger(m.slot) ? m.slot : undefined); break;
+      case 'cput': this.contPut(p, m.x | 0, m.y | 0, m.slot | 0, m.n | 0, Number.isInteger(m.ci) ? m.ci : undefined); break;
+      case 'cmove': this.contMove(p, m.x | 0, m.y | 0, m.a | 0, m.b | 0, m.n | 0); break;
       case 'quick': this.invQuick(p, m.a | 0); break;
       case 'revive': {
         if (p.dead || Math.hypot(p.x - 0.5, p.y - 0.5) > 5) return;
@@ -379,7 +381,7 @@ export class Game {
     if (b) {
       this.give(p, BUILDINGS[b.t].item, 1);
       for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.give(p, it, n);
-      for (const [it, n] of Object.entries(b.store || {})) if (n > 0) this.give(p, it, n);
+      if (b.t === 'crate') for (const s of crateSlots(b)) if (s) this.give(p, s.item, s.n);
       const inItem = b.t === 'rot_pit' ? 'leaf' : MULTIBLOCKS[b.t]?.in?.[0];
       if (b.in && inItem) this.give(p, inItem, b.in);
       this.setB(x, y, null);
@@ -460,12 +462,79 @@ export class Game {
     this.fx.push(['shatter', x, y, m.size]);
   }
 
+  // Put n of an item into a crate (merging, then empty slots). Returns how many fit.
   crateAdd(cr, item, n) {
-    const total = Object.values(cr.store).reduce((a, v) => a + v, 0);
-    const add = Math.min(n, CRATE_CAP - total);
-    if (add <= 0) return 0;
-    cr.store[item] = (cr.store[item] || 0) + add;
-    return add;
+    const slots = crateSlots(cr), max = stackMax(item);
+    let left = n;
+    for (const s of slots) if (left && s && s.item === item && s.n < max) { const k = Math.min(left, max - s.n); s.n += k; left -= k; }
+    for (let i = 0; i < slots.length && left; i++) if (!slots[i]) { const k = Math.min(left, max); slots[i] = { item, n: k }; left -= k; }
+    return n - left;
+  }
+
+  // ---------- containers: crates, buildings' input/output, eternal caches ----------
+  // Take n from container slot ci into inventory slot `slot` (or anywhere, if undefined).
+  contTake(p, x, y, ci, n, slot) {
+    const w = this.world, c = w.containerAt(x, y);
+    if (!c || !this.inReach(p, c.x, c.y)) return;
+    const d = c.slots[ci];
+    if (!d?.s) return;
+    const item = d.s.item;
+    n = Math.max(1, Math.min(n || d.s.n, d.s.n));
+    let taken = 0;
+    const inv = p.inv;
+    if (Number.isInteger(slot) && inv[slot] !== undefined) {
+      const t = inv[slot];
+      if (!t) { inv[slot] = { item, n }; taken = n; }
+      else if (t.item === item) { taken = Math.min(n, stackMax(item) - t.n); t.n += taken; }
+      else if (c.kind === 'crate' && n === d.s.n) { c.b.slots[ci] = t; inv[slot] = { item, n }; p.invDirty = true; this.dB.add(key(c.x, c.y)); return; }
+    } else taken = n - addItem(inv, item, n);
+    if (!taken) return;
+    if (c.kind === 'crate') { d.s.n -= taken; if (d.s.n <= 0) c.b.slots[ci] = null; }
+    else if (c.kind === 'building') { if (d.role === 'in') c.b.in -= taken; else c.b.out[item] -= taken; }
+    else { const store = { ...c.f.store }; store[item] -= taken; this.setF(c.x, c.y, { t: 'eternal', store }); }
+    this.dB.add(key(c.x, c.y));
+    p.invDirty = true;
+  }
+
+  // Put n from inventory slot `slot` into container slot ci (or anywhere it fits, if undefined).
+  contPut(p, x, y, slot, n, ci) {
+    const w = this.world, c = w.containerAt(x, y), s = p.inv[slot];
+    if (!c || !s || !this.inReach(p, c.x, c.y)) return;
+    n = Math.max(1, Math.min(n || s.n, s.n));
+    let put = 0;
+    if (c.kind === 'crate') {
+      const slots = c.b.slots;
+      if (Number.isInteger(ci) && slots[ci] !== undefined) {
+        const t = slots[ci];
+        if (!t) { slots[ci] = { item: s.item, n }; put = n; }
+        else if (t.item === s.item) { put = Math.min(n, stackMax(s.item) - t.n); t.n += put; }
+        else if (n === s.n) { slots[ci] = s; p.inv[slot] = t; p.invDirty = true; this.dB.add(key(c.x, c.y)); return; }
+      } else put = this.crateAdd(c.b, s.item, n);
+    } else if (c.kind === 'building') {
+      const inSlot = c.slots[0];
+      if (inSlot?.role !== 'in' || inSlot.item !== s.item) return; // buildings only take their input
+      put = Math.min(n, inSlot.cap - (c.b.in || 0));
+      c.b.in = (c.b.in || 0) + put;
+    } else return; // an eternal cache is take-only
+    if (!put) return;
+    s.n -= put;
+    if (s.n <= 0) p.inv[slot] = null;
+    this.dB.add(key(c.x, c.y));
+    p.invDirty = true;
+  }
+
+  // Move within a crate.
+  contMove(p, x, y, a, b2, n) {
+    const c = this.world.containerAt(x, y);
+    if (!c || c.kind !== 'crate' || !this.inReach(p, c.x, c.y)) return;
+    const slots = c.b.slots, A = slots[a], B = slots[b2];
+    if (a === b2 || !A || B === undefined) return;
+    n = Math.max(1, Math.min(n || A.n, A.n));
+    if (!B) { slots[b2] = { item: A.item, n }; A.n -= n; }
+    else if (B.item === A.item) { const k = Math.min(n, stackMax(A.item) - B.n); B.n += k; A.n -= k; }
+    else if (n === A.n) { slots[a] = B; slots[b2] = A; }
+    if (slots[a] && slots[a].n <= 0) slots[a] = null;
+    this.dB.add(key(c.x, c.y));
   }
 
   storeEternal(x, y, item, n = 1) {
@@ -517,19 +586,6 @@ export class Game {
     if (b) {
       const core = w.mbCoreFor(x, y);
       if (core) [x, y, b] = core;
-      const amt = (cap, have) => Math.max(0, Math.min(shift ? s.n : 1, cap - have));
-      if (b.t === 'crate') {
-        if (s && !it?.place) {
-          const n = this.crateAdd(b, s.item, s.n);
-          if (n) { removeItem(p.inv, s.item, n); p.invDirty = true; this.dB.add(key(x, y)); }
-          else this.tell(p, 'The crate is full.');
-        } else {
-          for (const [item, n] of Object.entries(b.store)) if (n > 0) this.give(p, item, n);
-          b.store = {};
-          this.dB.add(key(x, y));
-        }
-        return;
-      }
       if (b.t === 'torch' && it?.fuel) {
         b.fuel = Math.min(TORCH.placedFuel, b.fuel + it.fuel.value * 2);
         w.lightDirty = true;
@@ -537,18 +593,7 @@ export class Game {
         this.dB.add(key(x, y));
         return;
       }
-      const inSpec = b.t === 'rot_pit' ? ['leaf', 20] : MULTIBLOCKS[b.t]?.in;
-      if (inSpec && s?.item === inSpec[0]) {
-        const n = amt(inSpec[1], b.in);
-        if (n) { b.in += n; removeItem(p.inv, s.item, n); p.invDirty = true; }
-        return;
-      }
-      if (b.out && Object.values(b.out).some((n) => n > 0)) {
-        for (const [item, n] of Object.entries(b.out)) if (n > 0) this.give(p, item, n);
-        b.out = {};
-        return;
-      }
-      return;
+      return; // containers are opened (and emptied/filled) through the container ops
     }
 
     const f = w.getFeature(x, y);
@@ -559,15 +604,7 @@ export class Game {
         this.fx.push(['chest', x, y]);
         this.say(`${p.name} pried open an old chest.`, '#e0c070');
         return;
-      case 'eternal': {
-        const store = f.store && Object.entries(f.store).filter(([, n]) => n > 0);
-        if (store?.length) {
-          for (const [item, n] of store) this.give(p, item, n);
-          this.setF(x, y, { t: 'eternal' });
-          this.tell(p, `You gather what the teal roots brought in: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}.`, '#9fe8d8');
-        } else this.tell(p, 'The eternal flame. It never goes out.', '#9fe8d8');
-        return;
-      }
+      case 'eternal': return; // opened as a container (its cache)
       case 'note': this.tell(p, `"${NOTES[f.n ?? 0]}"`, '#d8c8a8'); return;
       case 'dead_fire': this.tell(p, 'Cold ashes. Whoever kept this fire is gone.', '#a8a0a0'); return;
       case 'shrine': {

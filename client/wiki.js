@@ -98,7 +98,7 @@ export function buildWiki(iconURL, keyOf) {
     <h4>Teal roots (eternal flames)</h4>
     <ul>
       <li>Roots touching an ${link('world:eternal', 'eternal flame')} glow teal. They reach ${ETERNAL_ROOT_REACH} tiles and never weaken.</li>
-      <li>Heat on teal roots is <b>free</b>. Output goes into the flame's cache - right-click the flame to collect it and carry it home.</li>
+      <li>Heat on teal roots is <b>free</b>. Output goes into the flame's cache - right-click the flame to open it and carry things home.</li>
       <li>Orange and teal networks can never meet: a root that would join them is refused.</li>
     </ul>`);
   add('guide:automation', G, 'Automation', 'rot_pit', `
@@ -186,7 +186,7 @@ export function buildWiki(iconURL, keyOf) {
     sapling: `<p>Plant in light. Grows for ~90s into a Grove Tree (solid), which sheds a ${item('stick')} every ~14s and a ${item('log')} every ~50s.</p><p>Beside a ${link('mb:kiln', 'Charcoal Kiln')} its logs go straight in. A ${bld('resin_tap')} beside it drips resin.</p>`,
     rot_pit: `<p>Holds 20 ${item('leaf')}. Every 4 rot into 1 ${item('peat')} in 20s (10s in rain). Needs no heat.</p><p>Kindling Bushes beside it fill it; a ${link('mb:press', 'Peat Press')} beside it takes its peat.</p>`,
     resin_tap: `<p>Place beside a grown Grove Tree (1 ${item('resin')} per 30s) or a Heart Grove (1 per 15s). Faster in rain.</p>`,
-    crate: `<p>Holds 400 items. Buildings beside it store their output in it instead of sending it down the roots - perfect for stockpiling charcoal.</p><p>Right-click to take everything; right-click while holding items to store that stack. Breaking it gives you the crate and its contents.</p>`,
+    crate: `<p>16 slots of storage. Right-click to open it, then move items between it and your inventory like your bag (drag, click, Shift-click to send a stack across). Buildings beside it store their output in it instead of sending it down the roots - perfect for stockpiling charcoal.</p><p>Breaking it gives you the crate and everything in it.</p>`,
     glowmoss: `<p>Gives off a faint 3x3 light, forever. Ring a ${item('heart_seed')} with 8 of these to grow a ${link('mb:heart_seed', 'Heart Grove')}.</p>`,
     hearth: `<p>A ring of 8 around the campfire grows it into a <b>Bonfire</b>. See ${link('guide:stages')}.</p>`,
     fire_brick: `<p>16 in a ring around the Bonfire grow it into a <b>Blaze</b>. Also the walls of the ${link('mb:watchfire', 'Watchfire')} and ${link('mb:forge_core', 'Crystal Forge')}.</p>`,
@@ -221,7 +221,7 @@ export function buildWiki(iconURL, keyOf) {
     const coreItem = BUILDINGS[core].item;
     const bp = RECIPES.find((r) => r.out[0] === coreItem)?.requires;
     let html = `<p>${MB_INFO[core]}</p><h4>Layout (${m.size}x${m.size})</h4>${mbGrid(core)}<p class="dim">${item(coreItem)} in the middle, ${(m.size * m.size - 1)} ${item(m.wall)} around it. Place the core first and the missing spots show as outlines.</p>`;
-    if (m.in) html += `<p>Holds up to ${m.in[1]} ${item(m.in[0])} - right-click it with them, or let a neighbour feed it.</p>`;
+    if (m.in) html += `<p>Holds up to ${m.in[1]} ${item(m.in[0])}. Right-click it to open it: put them in its input slot and take its output - or let a neighbour feed it.</p>`;
     if (m.heat) html += `<p>Heat cost on orange roots: ${m.draw} fuel/s while working. Free on teal roots.</p>`;
     if (m.fuse) html += `<p>When the last block goes in, it fuses into one structure. Breaking any part breaks the whole thing and drops every block.</p>`;
     const recipes = RECIPES.filter((r) => r.out[0] === coreItem || r.out[0] === m.wall);
@@ -234,7 +234,7 @@ export function buildWiki(iconURL, keyOf) {
 
   // ---------------- the world ----------------
   const W = 'The World';
-  add('world:eternal', W, 'Eternal flames', 'torch', `<p>Found in about two thirds of ruins. It never goes out: a 7x7 of safe light anywhere in the dark, and your torches relight there.</p><p>Roots touching it grow <b>teal</b> - see ${link('guide:roots')}. Right-click it to collect its cache.</p>`);
+  add('world:eternal', W, 'Eternal flames', 'torch', `<p>Found in about two thirds of ruins. It never goes out: a 7x7 of safe light anywhere in the dark, and your torches relight there.</p><p>Roots touching it grow <b>teal</b> - see ${link('guide:roots')}. Right-click it to open its cache.</p>`);
   add('world:ruins', W, 'Ruins', 'stone', `<p>Walled stone squares with a door gap and one or two old chests. Most have an ${link('world:eternal', 'eternal flame')}; the rest have a cold brazier and an extra chest.</p><p>Chests hold sticks, logs, torches, seeds, saplings and better fuel the farther out you go - and often a blueprint.</p>`);
   add('world:dead_fires', W, 'Dead campfires', 'charred_stick', `<p>Someone else's fire, gone out. A ring of cold stones, bedrolls, scattered sticks, a chest, and a scrawled note (right-click to read it).</p><p>Sift the ashes (hold LMB) for charcoal and charred sticks. Their chests sometimes hold the Watchfire blueprint.</p>`);
   add('world:shrines', W, 'Shrines', 'bp_kiln', `<p>A lit stone pedestal holding one blueprint - guaranteed. Right-click to take it; the shrine stays lit, a safe place to rest.</p><p>Shrines farther out hold better designs: near ones offer the Kiln, Resin Tap or Peat Press; middle ones the Blaze, Watchfire, Press or Tap; the farthest the Coal Bed, Inferno, Crystal Forge or Watchfire.</p>`);

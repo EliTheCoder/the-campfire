@@ -116,6 +116,7 @@ function onMsg(m) {
       st.packets = m.pk.map(([id, x, y, nx, ny, p, item]) => ({ id, x, y, nx, ny, p, item }));
       if (m.fx) for (const e of m.fx) { R.fx(e, w); audio.fx(e); }
       if (m.B && invOpen()) renderCraft();
+      if ((m.B || m.F) && contOpen()) renderInv();
       break;
     }
     case 'inv': st.inv = m.inv; renderInv(); break;
@@ -176,7 +177,7 @@ function refreshKeyLabels() {
 navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); renderBinds(); }).catch(() => {});
 refreshKeyLabels();
 
-const PANELS = ['inv-panel', 'wiki-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
+const PANELS = ['inv-panel', 'cont-panel', 'wiki-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
 const keys = new Set();
 let mouse = { x: 0, y: 0, l: false };
 
@@ -198,7 +199,8 @@ addEventListener('keydown', (e) => {
 
 addEventListener('keydown', (e) => {
   if (!st.world) {
-    // main menu: Esc backs out of panels
+    // main menu: Esc backs out of panels; ' and / mustn't open Firefox's Quick Find
+    if (document.activeElement?.tagName !== 'INPUT' && ['Quote', 'Slash'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape') closePanel(PANELS.find((id) => !$(id).hidden));
     return;
   }
@@ -212,21 +214,25 @@ addEventListener('keydown', (e) => {
   }
   const c = e.code;
   keys.add(c);
+  if (Object.values(BINDS).includes(c) || /^Digit[1-8]$/.test(c) || ['Tab', 'Escape', 'Quote', 'Slash', 'Space'].includes(c)) e.preventDefault();
   if (c === BINDS.chat || (BINDS.chat === 'Enter' && c === 'NumpadEnter')) { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
   const digit = /^Digit([1-8])$/.exec(c);
   if (digit) {
     const k = Number(digit[1]) - 1;
-    const over = invOpen() ? slotUnder(document.elementFromPoint(mouse.x, mouse.y)) : -1;
-    if (over >= 0 && over !== k) { send({ t: 'swap', a: over, b: k }); cursor = null; }
+    const ref = screenOpen() ? refAt(document.elementFromPoint(mouse.x, mouse.y)) : null;
+    if (ref?.src === 'cont') { send({ t: 'ctake', x: st.cont.x, y: st.cont.y, ci: ref.i, n: stackAt(ref)?.n ?? 1, slot: k }); cursor = null; }
+    else if (ref && ref.i !== k) { send({ t: 'swap', a: ref.i, b: k }); cursor = null; }
     else st.sel = k;
     renderInv(); audio.play('tick', { vol: 0.4 });
   }
   if (c === BINDS.mute) log(audio.toggleMute() ? `Sound muted. [${K('mute')}] to unmute.` : 'Sound on.', '#aaa');
   if (c === BINDS.uiDown || c === BINDS.uiUp) { uiNudge = Math.max(0.6, Math.min(2, uiNudge * (c === BINDS.uiDown ? 0.9 : 1.1))); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); }
-  if (c === 'Tab' || c === BINDS.inventory) { e.preventDefault(); toggle('inv-panel'); }
+  if ((c === 'Tab' || c === BINDS.inventory) && contOpen()) closeContainer();
+  else if (c === 'Tab' || c === BINDS.inventory) toggle('inv-panel');
   if (c === BINDS.craft) toggle('inv-panel');
   if (c === BINDS.help) toggleWiki();
-  if (c === 'Escape') {
+  if (c === 'Escape' && contOpen()) { closeContainer(); audio.play('close', { vol: 0.45 }); }
+  else if (c === 'Escape') {
     const open = PANELS.filter((id) => !$(id).hidden);
     const sub = open.find((id) => $(id).dataset.back);
     if (sub) closePanel(sub);
@@ -246,7 +252,7 @@ function toggle(id) {
   const el = $(id);
   el.hidden = !el.hidden;
   audio.play(el.hidden ? 'close' : 'open', { vol: 0.45 });
-  if (id === 'inv-panel') { cursor = null; dragFrom = -1; }
+  if (id === 'inv-panel') { cursor = null; drag = null; }
   if (id === 'menu-panel' && !el.hidden) renderMenu();
   for (const u of scrollUpdaters) u();
   if (id === 'inv-panel') renderInv();
@@ -267,7 +273,13 @@ for (const cv of [$('gl'), $('lo')]) {
       return;
     }
     if (e.button === 0) mouse.l = true;
-    if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
+    if (e.button === 2 && st.hover) {
+      const held = st.inv[st.sel] && ITEMS[st.inv[st.sel].item];
+      const b = st.world.getB(st.hover.x, st.hover.y);
+      // right-click opens anything that holds items (a torch with fuel in hand still refuels)
+      if (!(b?.t === 'torch') && !(held?.use === 'flare') && !held?.learn && openContainerAt(st.hover.x, st.hover.y)) return;
+      send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
+    }
   });
   cv.addEventListener('wheel', (e) => { st.sel = (st.sel + (e.deltaY > 0 ? 1 : HOTBAR - 1)) % HOTBAR; renderInv(); audio.play('tick', { vol: 0.3 }); });
 }
@@ -417,7 +429,7 @@ function updateTooltip(x, y, inReach) {
   const slotEl = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('.slot');
   if (cursor) { tip.hidden = true; return; }
   if (slotEl) {
-    const s = st.inv[Number(slotEl.dataset.slot)];
+    const s = slotEl.dataset.c != null ? openContainer()?.slots[Number(slotEl.dataset.c)]?.s : st.inv[Number(slotEl.dataset.slot)];
     if (s) placeTip(tip, itemTooltip(s)); else tip.hidden = true;
     return;
   }
@@ -481,7 +493,7 @@ function featureHint(w, f, x, y) {
     case 'chest': return '<br>RMB: open';
     case 'eternal': {
       const store = Object.entries(f.store || {}).filter(([, n]) => n > 0);
-      return '<br>It never goes out.' + (store.length ? '<br>' + TEAL(`Cache: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}`) + '<br>RMB: collect it all' : '<br>' + DIM('Ember roots touching it grow teal. Buildings on teal roots send their output here.'));
+      return '<br>It never goes out.' + (store.length ? '<br>' + TEAL(`Cache: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}`) + '<br>RMB: open the cache' : '<br>' + DIM('Ember roots touching it grow teal. Buildings on teal roots send their output here.'));
     }
     case 'brazier': return '<br>' + DIM('Cold and dead.');
     case 'dead_fire': return '<br>' + DIM('Someone else\'s fire. It went out.') + '<br>Hold LMB: sift the ashes';
@@ -502,7 +514,7 @@ function featureHint(w, f, x, y) {
 function pct(v) { return Math.round(v * 100) + '%'; }
 function outStr(b) {
   const e = Object.entries(b.out || {}).filter(([, n]) => n > 0);
-  return e.length ? `<br>Holding: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')} ${DIM('(RMB: take)')}` : '';
+  return e.length ? `<br>Holding: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')} ${DIM('(RMB: open)')}` : '';
 }
 function netLabel(net) {
   return net === 'fire' ? AMBER('Connected to the campfire') : net ? TEAL('Connected to an eternal flame (output goes to its cache)') : null;
@@ -528,7 +540,7 @@ function buildingInfo(w, b, x, y) {
     case 'rot_pit': {
       const n = countFeeders(w, x, y, b);
       const feeders = n ? AMBER(`Fed by ${n} Kindling Bush${n > 1 ? 'es' : ''} beside it`) : DIM('Plant Kindling Seeds right beside it and they feed it leaves');
-      return `Leaves: ${b.in}/20 ${DIM('(RMB with leaves)')}<br>Rotting: ${pct(b.p)}<br>${feeders}<br>${feeding() ?? link}${outStr(b)}`;
+      return `Leaves: ${b.in}/20 ${DIM('(RMB: open)')}<br>Rotting: ${pct(b.p)}<br>${feeders}<br>${feeding() ?? link}${outStr(b)}`;
     }
     case 'resin_tap': return (b.on ? 'Dripping resin' : RED('Needs a grown grove tree or heart tree beside it')) + `<br>${link}${outStr(b)}`;
     case 'glowmoss': return 'A faint 3x3 light.' + DIM('<br>Ring a Heartwood Seed with 8 of these to grow a Heart Grove.');
@@ -544,7 +556,7 @@ function buildingInfo(w, b, x, y) {
     case 'crate': {
       const e = Object.entries(b.store || {}).filter(([, n]) => n > 0);
       const total = e.reduce((a, [, n]) => a + n, 0);
-      return (e.length ? `Holding ${total}/400: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}` : DIM('Empty')) + '<br>' + DIM('Buildings beside it store their output here instead of the roots.') + '<br>' + DIM('RMB: take all · RMB with items: store them');
+      return (e.length ? `Holding ${total}/400: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}` : DIM('Empty')) + '<br>' + DIM('Buildings beside it store their output here instead of the roots.') + '<br>' + DIM('RMB: open');
     }
   }
   const m = MULTIBLOCKS[b.t];
@@ -554,7 +566,7 @@ function buildingInfo(w, b, x, y) {
       return AMBER(`Needs ${missing} more ${ITEMS[m.wall].name}${missing > 1 ? 's' : ''} around it (${m.size}x${m.size})`);
     }
     const lines = [];
-    if (m.in) lines.push(`${ITEMS[m.in[0]].name}: ${b.in}/${m.in[1]} ${DIM(`(RMB with ${ITEMS[m.in[0]].name.toLowerCase()})`)}`);
+    if (m.in) lines.push(`${ITEMS[m.in[0]].name}: ${b.in}/${m.in[1]} ${DIM('(RMB: open)')}`);
     if (m.make) lines.push(b.on ? `Making ${ITEMS[m.make[1]].name}: ${pct(b.p)}` : m.heat && !b.net ? RED('Needs an ember root touching its walls') : DIM(`Waiting for ${m.make[0]} ${ITEMS[m.in[0]].name.toLowerCase()}`));
     if (m.grows) lines.push(b.g < 1 ? `Growing ${pct(b.g)}` : `Growing ${ITEMS[m.grows[0]].name}: ${pct(b.p)}`);
     if (m.light) lines.push(b.lit ? `Lighting ${m.light * 2 + 1}x${m.light * 2 + 1} for everyone` : RED('Needs an ember root touching its walls to burn'));
@@ -575,94 +587,181 @@ function buildingInfo(w, b, x, y) {
 // ---------------- HUD ----------------
 function fmtTime(s) { const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
-// ---------------- inventory (Minecraft-style) ----------------
-// A stack can ride on the cursor: `cursor` is {from, n} - n items still sitting in slot `from`
-// on the server until they're put down somewhere. Press-drag-release onto another slot is
-// drag-and-drop; press-release on the same slot leaves the stack on the cursor.
-let cursor = null, dragFrom = -1;
+// ---------------- inventory & containers (Minecraft-style) ----------------
+// Two "slot screens": the inventory, and an open container (crate, building, eternal cache)
+// shown above your inventory. A stack can ride on the cursor: `cursor` is
+// { src: 'inv' | 'cont', i, n, item } - n items still sitting in that slot on the server until
+// they're put down. Press-drag-release onto another slot is drag-and-drop; press-release on the
+// same slot leaves the stack on the cursor.
+let cursor = null, drag = null;
+st.cont = null; // { x, y } of the open container
+const invOpen = () => !$('inv-panel').hidden;
+const contOpen = () => !$('cont-panel').hidden;
+const screenOpen = () => invOpen() || contOpen();
+const openContainer = () => (st.cont && st.world ? st.world.containerAt(st.cont.x, st.cont.y) : null);
+
+function stackHTML(item, n, faded) {
+  return `<img src="${iconURL[item]}"${faded ? ' style="opacity:0.3"' : ''}>${n > 1 ? `<span class="n">${n}</span>` : ''}`;
+}
 function slotEl(i, big) {
   const s = st.inv[i];
   const d = document.createElement('div');
   d.className = 'slot' + (i === st.sel && big ? ' sel' : '');
   d.dataset.slot = i;
-  const lifted = cursor && cursor.from === i ? cursor.n : 0;
-  const n = s ? s.n - lifted : 0;
-  if (s && n > 0) d.innerHTML = `<img src="${iconURL[s.item]}">${n > 1 ? `<span class="n">${n}</span>` : ''}`;
-  else if (s && lifted) { d.classList.add('lifted'); d.innerHTML = `<img src="${iconURL[s.item]}">`; }
+  const lifted = cursor && cursor.src === 'inv' && cursor.i === i ? cursor.n : 0;
+  if (s) d.innerHTML = s.n - lifted > 0 ? stackHTML(s.item, s.n - lifted) : stackHTML(s.item, 0, true);
   if (i < HOTBAR) d.insertAdjacentHTML('beforeend', `<span class="k">${i + 1}</span>`);
   return d;
 }
+function contSlotEl(c, ci) {
+  const slot = c.slots[ci];
+  const d = document.createElement('div');
+  d.className = 'slot cslot ' + slot.role;
+  d.dataset.c = ci;
+  const lifted = cursor && cursor.src === 'cont' && cursor.i === ci ? cursor.n : 0;
+  if (slot.s) d.innerHTML = slot.s.n - lifted > 0 ? stackHTML(slot.s.item, slot.s.n - lifted) : stackHTML(slot.s.item, 0, true);
+  else if (slot.role === 'in') d.innerHTML = stackHTML(slot.item, 0, true); // shows what it takes
+  if (slot.role !== 'store') d.insertAdjacentHTML('beforeend', `<span class="k">${slot.role}</span>`);
+  return d;
+}
+// The stack a ref points at, or null.
+function stackAt(ref) {
+  if (ref.src === 'inv') return st.inv[ref.i] || null;
+  return openContainer()?.slots[ref.i]?.s || null;
+}
 function renderInv() {
   // drop a cursor stack the server no longer backs (e.g. the slot changed under us)
-  if (cursor) { const s = st.inv[cursor.from]; if (!s) cursor = null; else cursor.n = Math.min(cursor.n, s.n); }
-  const hb = $('hotbar'); hb.replaceChildren();
-  for (let i = 0; i < HOTBAR; i++) hb.append(slotEl(i, true));
-  const grid = $('inv-grid'); grid.replaceChildren();
-  for (let i = HOTBAR; i < st.inv.length; i++) grid.append(slotEl(i));
-  const ih = $('inv-hotbar'); ih.replaceChildren();
-  for (let i = 0; i < HOTBAR; i++) ih.append(slotEl(i, true));
+  if (cursor) { const s = stackAt(cursor); if (!s || s.item !== cursor.item) cursor = null; else cursor.n = Math.min(cursor.n, s.n); }
+  const fill = (id, from, to, big) => { const el = $(id); el.replaceChildren(); for (let i = from; i < to; i++) el.append(slotEl(i, big)); };
+  fill('hotbar', 0, HOTBAR, true);
+  if (invOpen()) { fill('inv-grid', HOTBAR, st.inv.length); fill('inv-hotbar', 0, HOTBAR, true); renderCraft(); }
+  if (contOpen()) {
+    fill('cont-inv', HOTBAR, st.inv.length); fill('cont-hotbar', 0, HOTBAR, true);
+    renderCont();
+  }
   const cs = $('cursor-stack');
   cs.hidden = !cursor;
   if (cursor) {
-    cs.querySelector('img').src = iconURL[st.inv[cursor.from].item];
+    cs.querySelector('img').src = iconURL[cursor.item];
     cs.querySelector('.n').textContent = cursor.n > 1 ? cursor.n : '';
     placeCursor();
   }
-  if (!$('inv-panel').hidden) renderCraft();
+}
+function renderCont() {
+  const c = openContainer();
+  if (!c) { closeContainer(); return; }
+  $('cont-title').textContent = c.title;
+  let info = '';
+  if (c.kind === 'crate') info = `${c.slots.filter((d) => d.s).length}/${c.slots.length} slots used. Buildings beside it store their output here.`;
+  else if (c.kind === 'eternal') info = 'Buildings on its teal roots send their output here. Take what you need.';
+  else {
+    const b = c.b, m = MULTIBLOCKS[b.t];
+    const making = m?.make?.[1] ?? (b.t === 'rot_pit' ? 'peat' : m?.grows?.[0]);
+    info = b.on || (b.t === 'rot_pit' && b.in >= 4) ? `Making ${ITEMS[making]?.name ?? '...'}: ${Math.round((b.p || 0) * 100)}%`
+      : c.slots[0]?.role === 'in' ? `Put ${ITEMS[c.slots[0].item].name} in to start.` : 'Its output collects here until something takes it.';
+  }
+  $('cont-info').textContent = info;
+  const grid = $('cont-grid');
+  grid.replaceChildren();
+  grid.style.gridTemplateColumns = `repeat(${Math.min(8, Math.max(c.slots.length, 1))}, 48px)`;
+  if (!c.slots.length) grid.innerHTML = '<span class="small dim">Empty.</span>';
+  for (let ci = 0; ci < c.slots.length; ci++) grid.append(contSlotEl(c, ci));
+}
+function openContainerAt(x, y) {
+  const c = st.world.containerAt(x, y);
+  if (!c) return false;
+  if (Math.hypot(c.x + 0.5 - st.me.x, c.y + 0.5 - st.me.y) > REACH + 1.5) { R.float('Too far away', c.x + 0.5, c.y, '#bcd4ff'); return true; }
+  for (const id of PANELS) $(id).hidden = true;
+  st.cont = { x: c.x, y: c.y };
+  cursor = null;
+  $('cont-panel').hidden = false;
+  audio.play('open', { vol: 0.45 });
+  st.uiBlocking = true;
+  renderInv();
+  return true;
+}
+function closeContainer() {
+  $('cont-panel').hidden = true;
+  st.cont = null;
+  cursor = null;
+  st.uiBlocking = PANELS.some((id) => !$(id).hidden);
 }
 function placeCursor() {
   const z = R.ui || 1;
   $('cursor-stack').style.left = (mouse.x - 22 * z) / z + 'px';
   $('cursor-stack').style.top = (mouse.y - 22 * z) / z + 'px';
 }
-const invOpen = () => !$('inv-panel').hidden;
-const slotUnder = (target) => { const el = target?.closest?.('#inv-panel .slot'); return el ? Number(el.dataset.slot) : -1; };
-// Put n of the cursor stack into slot i.
-function putDown(i, n) {
-  if (i === cursor.from) { if (n >= cursor.n) cursor = null; return; }
-  send({ t: 'move', a: cursor.from, b: i, n });
+// Which slot (inventory or container) an element is, if any.
+function refAt(target) {
+  const el = target?.closest?.('#inv-panel .slot, #cont-panel .slot');
+  if (!el) return null;
+  return el.dataset.c != null ? { src: 'cont', i: Number(el.dataset.c) } : { src: 'inv', i: Number(el.dataset.slot) };
+}
+const slotUnder = (target) => { const r = refAt(target); return r?.src === 'inv' ? r.i : -1; };
+// Put n of the cursor stack into the slot `to`.
+function putDown(to, n) {
+  const from = cursor;
+  if (to.src === from.src && to.i === from.i) { if (n >= from.n) cursor = null; return; }
+  const c = st.cont;
+  if (from.src === 'inv' && to.src === 'inv') send({ t: 'move', a: from.i, b: to.i, n });
+  else if (from.src === 'inv') send({ t: 'cput', x: c.x, y: c.y, slot: from.i, n, ci: to.i });
+  else if (to.src === 'inv') send({ t: 'ctake', x: c.x, y: c.y, ci: from.i, n, slot: to.i });
+  else send({ t: 'cmove', x: c.x, y: c.y, a: from.i, b: to.i, n });
   audio.play('tick', { vol: 0.35, rate: 1.3 });
-  if (n >= cursor.n) cursor = null; else cursor.n -= n;
+  if (n >= from.n) cursor = null; else from.n -= n;
+}
+// Shift-click: send a stack across (inventory <-> container), or hotbar <-> bag.
+function quickMove(ref) {
+  const s = stackAt(ref);
+  if (!s) return;
+  const c = st.cont;
+  if (ref.src === 'cont') send({ t: 'ctake', x: c.x, y: c.y, ci: ref.i, n: s.n });
+  else if (contOpen()) send({ t: 'cput', x: c.x, y: c.y, slot: ref.i, n: s.n });
+  else send({ t: 'quick', a: ref.i });
+  audio.play('tick', { vol: 0.35 });
 }
 function throwCursor() {
-  send({ t: 'drop', slot: cursor.from, n: cursor.n, x: st.hover?.x, y: st.hover?.y });
+  if (cursor.src === 'inv') send({ t: 'drop', slot: cursor.i, n: cursor.n, x: st.hover?.x, y: st.hover?.y });
   cursor = null;
   renderInv();
 }
 document.addEventListener('pointerdown', (e) => {
-  if (!invOpen()) {
+  if (!screenOpen()) {
     // HUD hotbar: click to select
     const el = e.target.closest?.('#hotbar .slot');
     if (el) { e.stopPropagation(); st.sel = Number(el.dataset.slot); renderInv(); audio.play('tick', { vol: 0.3 }); }
     return;
   }
-  const i = slotUnder(e.target);
-  if (i < 0) {
-    // holding a stack and clicking outside the inventory throws it into the world
-    if (cursor && !e.target.closest('#inv-panel')) { e.preventDefault(); e.stopPropagation(); throwCursor(); }
+  const ref = refAt(e.target);
+  if (!ref) {
+    if (e.target.closest('#inv-panel, #cont-panel')) return;
+    // outside the window: throw what you're carrying (from your inventory), or close a container
+    e.preventDefault(); e.stopPropagation();
+    if (cursor) throwCursor();
+    else if (contOpen()) closeContainer();
     return;
   }
   e.preventDefault(); e.stopPropagation();
-  const s = st.inv[i];
+  const s = stackAt(ref);
   if (e.button === 0) {
     if (!cursor) {
-      if (s && e.shiftKey) { send({ t: 'quick', a: i }); audio.play('tick', { vol: 0.35 }); }
-      else if (s) { cursor = { from: i, n: s.n }; dragFrom = i; audio.play('pluck', { vol: 0.35 }); }
-    } else putDown(i, cursor.n);
+      if (s && e.shiftKey) quickMove(ref);
+      else if (s) { cursor = { ...ref, n: s.n, item: s.item }; drag = ref; audio.play('pluck', { vol: 0.35 }); }
+    } else putDown(ref, cursor.n);
   } else if (e.button === 2) {
-    if (!cursor) { if (s) { cursor = { from: i, n: Math.ceil(s.n / 2) }; audio.play('pluck', { vol: 0.35 }); } }
-    else putDown(i, 1);
+    if (!cursor) { if (s) { cursor = { ...ref, n: Math.ceil(s.n / 2), item: s.item }; audio.play('pluck', { vol: 0.35 }); } }
+    else putDown(ref, 1);
   }
   renderInv();
 }, true);
 document.addEventListener('pointerup', (e) => {
-  if (dragFrom < 0) return;
-  const i = slotUnder(document.elementFromPoint(e.clientX, e.clientY));
-  if (cursor && i >= 0 && i !== dragFrom) putDown(i, cursor.n);
-  dragFrom = -1;
+  if (!drag) return;
+  const ref = refAt(document.elementFromPoint(e.clientX, e.clientY));
+  if (cursor && ref && !(ref.src === drag.src && ref.i === drag.i)) putDown(ref, cursor.n);
+  drag = null;
   renderInv();
 });
-$('inv-panel').addEventListener('contextmenu', (e) => e.preventDefault());
+for (const id of ['inv-panel', 'cont-panel']) $(id).addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('mousemove', () => { if (cursor) placeCursor(); });
 
 function nearStation(type) {
@@ -987,7 +1086,11 @@ function updateHUD(dt) {
   else rp.hidden = true;
 
   if ((craftRefresh += dt) > 0.5 && invOpen()) { craftRefresh = 0; renderCraft(); }
-  $('bottom').hidden = invOpen(); // the inventory shows its own hotbar; however it was closed, bring this one back
+  $('bottom').hidden = screenOpen(); // the inventory/container shows its own hotbar; however it was closed, bring this one back
+  if (contOpen()) {
+    const c = openContainer();
+    if (!c || me.dead || Math.hypot(c.x + 0.5 - me.x, c.y + 0.5 - me.y) > REACH + 2) closeContainer();
+  }
 }
 
 // Placed torches burn down locally between server updates (which only arrive every few seconds),
