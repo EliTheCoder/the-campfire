@@ -252,7 +252,8 @@ addEventListener('blur', () => { keys.clear(); mouse.l = false; });
 
 function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-  else document.documentElement.requestFullscreen?.().catch(() => {});
+  // Chromium can keep Esc for the game while fullscreen (hold Esc to leave); Firefox can't.
+  else document.documentElement.requestFullscreen?.().then(() => navigator.keyboard?.lock?.(['Escape'])).catch(() => {});
 }
 
 function toggle(id) {
