@@ -513,6 +513,12 @@ export function createRenderer(glCanvas, overlay, S) {
         outIcon(b, px, py, t);
         break;
       case 'glowmoss': sc.drawImage(S.bld.glowmoss, px, py); glowmossSparks(px, py, t, x * 7 + y); break;
+      case 'crate': {
+        sc.drawImage(S.bld.crate, px, py);
+        const first = Object.keys(b.store || {}).find((k) => b.store[k] > 0);
+        if (first) sc.drawImage(S.icon[first], 0, 0, 16, 16, px + 4, py + 4, 8, 8);
+        break;
+      }
       case 'hearth': case 'fire_brick': case 'ember_stone': {
         sc.drawImage(S.bld[b.t], px, py);
         // ring blocks around a living fire glow at their seams

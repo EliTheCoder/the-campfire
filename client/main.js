@@ -487,6 +487,11 @@ function buildingInfo(w, b, x, y) {
       return s;
     }
     case 'workbench': return 'Stand nearby to craft advanced things';
+    case 'crate': {
+      const e = Object.entries(b.store || {}).filter(([, n]) => n > 0);
+      const total = e.reduce((a, [, n]) => a + n, 0);
+      return (e.length ? `Holding ${total}/400: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}` : DIM('Empty')) + '<br>' + DIM('Machines beside it store their output here instead of the roots.') + '<br>' + DIM('RMB: take all · RMB with items: store them');
+    }
   }
   const m = MULTIBLOCKS[b.t];
   if (m) {

@@ -460,8 +460,14 @@ export function makeSprites() {
     for (let y = 5; y <= 10; y++) { g.p(5, y, '#cfe4ff'); g.p(10, y, '#cfe4ff'); }
     g.r(7, 7, 2, 2, tint);
   });
+  icon('crate', (g) => {
+    g.r(1, 3, 14, 12, '#7a5432'); g.r(1, 3, 14, 1, '#a07448'); g.r(1, 14, 14, 1, '#4a3220');
+    g.r(1, 3, 1, 12, '#5a3d22'); g.r(14, 3, 1, 12, '#5a3d22');
+    g.r(2, 7, 12, 1, '#5a3d22'); g.r(2, 11, 12, 1, '#5a3d22');
+    for (const [x, y] of [[2, 4], [13, 4], [2, 13], [13, 13]]) g.p(x, y, '#9a98a3');
+  });
   // placed blocks use their icons
-  for (const t of ['fire_brick', 'ember_stone', 'timber', 'packed_earth', 'press', 'coal_bed', 'forge_core', 'watchfire', 'resin_tap', 'glowmoss', 'heart_seed']) S.bld[t] = S.icon[t];
+  for (const t of ['crate', 'fire_brick', 'ember_stone', 'timber', 'packed_earth', 'press', 'coal_bed', 'forge_core', 'watchfire', 'resin_tap', 'glowmoss', 'heart_seed']) S.bld[t] = S.icon[t];
 
   // ---------- progression: ground & site features ----------
   S.ground.cave = [0, 1, 2, 3].map((v) => mk(16, 16, (g) => {

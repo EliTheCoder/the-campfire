@@ -5,6 +5,7 @@ import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
 
 const OUT_CAP = 8;
+const CRATE_CAP = 400;
 const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -16,6 +17,7 @@ function newBuilding(t) {
     case 'sapling': return { t, g: 0, p: 0, q: 0, out: {} };
     case 'rot_pit': return { t, in: 0, p: 0, out: {} };
     case 'resin_tap': return { t, p: 0, out: {} };
+    case 'crate': return { t, store: {} };
     case 'heart_seed': return { t, g: 0, p: 0, out: {}, ok: false };
     case 'watchfire': return { t, ok: false, lit: false };
     default: return MULTIBLOCKS[t] ? { t, in: 0, p: 0, out: {}, ok: false } : { t };
@@ -308,6 +310,7 @@ export class Game {
     if (b) {
       this.give(p, BUILDINGS[b.t].item, 1);
       for (const [it, n] of Object.entries(b.out || {})) if (n > 0) this.give(p, it, n);
+      for (const [it, n] of Object.entries(b.store || {})) if (n > 0) this.give(p, it, n);
       const inItem = b.t === 'rot_pit' ? 'leaf' : MULTIBLOCKS[b.t]?.in?.[0];
       if (b.in && inItem) this.give(p, inItem, b.in);
       this.setB(x, y, null);
@@ -388,6 +391,14 @@ export class Game {
     this.fx.push(['shatter', x, y, m.size]);
   }
 
+  crateAdd(cr, item, n) {
+    const total = Object.values(cr.store).reduce((a, v) => a + v, 0);
+    const add = Math.min(n, CRATE_CAP - total);
+    if (add <= 0) return 0;
+    cr.store[item] = (cr.store[item] || 0) + add;
+    return add;
+  }
+
   storeEternal(x, y, item, n = 1) {
     const f = this.world.getFeature(x, y);
     const store = { ...(f?.store || {}) };
@@ -431,6 +442,18 @@ export class Game {
       const core = w.mbCoreFor(x, y);
       if (core) [x, y, b] = core;
       const amt = (cap, have) => Math.max(0, Math.min(shift ? s.n : 1, cap - have));
+      if (b.t === 'crate') {
+        if (s && !it?.place) {
+          const n = this.crateAdd(b, s.item, s.n);
+          if (n) { removeItem(p.inv, s.item, n); p.invDirty = true; this.dB.add(key(x, y)); }
+          else this.tell(p, 'The crate is full.');
+        } else {
+          for (const [item, n] of Object.entries(b.store)) if (n > 0) this.give(p, item, n);
+          b.store = {};
+          this.dB.add(key(x, y));
+        }
+        return;
+      }
       if (b.t === 'torch' && it?.fuel) {
         b.fuel = Math.min(TORCH.placedFuel, b.fuel + it.fuel.value * 2);
         w.lightDirty = true;
@@ -666,6 +689,10 @@ export class Game {
       const cb = c[2], m = MULTIBLOCKS[cb.t];
       const ok = (cb.t === 'rot_pit' && item === 'leaf' && cb.in < 20) || (m?.in?.[0] === item && cb.ok && cb.in < m.in[1]);
       if (ok) { cb.in++; this.fx.push(['hop', ox, oy, nx, ny, item]); return true; }
+    }
+    for (const [nx, ny, ox, oy] of outs) {
+      const cr = w.getB(nx, ny);
+      if (cr?.t === 'crate' && this.crateAdd(cr, item, 1)) { this.dB.add(key(nx, ny)); this.fx.push(['hop', ox, oy, nx, ny, item]); return true; }
     }
     const fuel = !!ITEMS[item].fuel;
     for (const [nx, ny] of outs) {
