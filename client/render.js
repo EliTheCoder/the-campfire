@@ -662,10 +662,11 @@ export function createRenderer(glCanvas, overlay, S) {
     const cx = px + 8;
     if (b.t === 'kiln') {
       if (b.on) {
-        ec.fillStyle = pal[3]; ec.fillRect(fx + 19, fy + 38, 10, 8);
-        ec.fillStyle = pal[2]; ec.fillRect(fx + 20, fy + 41, 8, 5);
-        drawFlame(ec, fx + 24, fy + 46, 9, 6, pal, t, x);
-        if (Math.random() < 0.08) R.parts.push({ x: fx + 34, y: fy - 1, vx: (Math.random() - 0.5) * 4, vy: -10, g: 0, size: 2, grow: 1.5, emit: false, life: 2.5, max: 2.5, drag: 0, col: '#4a4652', a: 0.4 });
+        // glow in the firebox mouth (the arch is at x 17..31, y 38..53 of the sprite)
+        ec.fillStyle = pal[3]; ec.fillRect(fx + 18, fy + 42, 12, 11);
+        ec.fillStyle = pal[2]; ec.fillRect(fx + 19, fy + 46, 10, 7);
+        drawFlame(ec, fx + 24, fy + 52, 10, 8, pal, t, x);
+        if (Math.random() < 0.08) R.parts.push({ x: fx + 33, y: fy - 1, vx: (Math.random() - 0.5) * 4, vy: -10, g: 0, size: 2, grow: 1.5, emit: false, life: 2.5, max: 2.5, drag: 0, col: '#4a4652', a: 0.4 });
       }
     } else if (b.t === 'press') {
       if (b.on && Math.sin(t * 4) > 0) { sc.fillStyle = '#5a4228'; sc.fillRect(fx + 18 + Math.round((t * 6) % 12), fy + 41, 1, 1); }

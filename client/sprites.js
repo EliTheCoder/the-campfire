@@ -209,42 +209,50 @@ export function makeSprites() {
     g.r(0, 15, 16, 1, '#1e1210');
   });
 
-  // The finished Charcoal Kiln: one 3x3 structure (48x56, extends 8px above its footprint).
+  // The finished Charcoal Kiln: a squat brick beehive kiln filling its whole 3x3 footprint
+  // (48x56: the bottom 48 rows are the footprint, the top 8 the dome and chimney).
   S.kilnBig = mk(48, 56, (g) => {
     const rnd = mulberry32(77);
-    const cx = 24, base = 54;
-    // footing
-    g.r(2, 46, 44, 9, '#3a2620'); g.r(2, 46, 44, 1, '#5e3c30');
-    // dome: brick courses that narrow toward the top
-    for (let y = 8; y < 47; y++) {
-      const t = (y - 8) / 38;
-      const half = Math.round(8 + Math.sqrt(t) * 14);
-      const course = Math.floor((y - 8) / 4), inCourse = (y - 8) % 4;
+    const cx = 24, top = 10, shoulder = 24, base = 54;
+    const halfAt = (y) => (y >= shoulder ? 23 : Math.round(23 * Math.sqrt(Math.max(0, 1 - ((shoulder - y) / (shoulder - top + 1)) ** 2))));
+    // soft contact shadow, just under the base
+    for (let x = 2; x < 46; x++) { g.p(x, base + 1, '#120c0a'); if (x > 5 && x < 43) g.p(x, base, '#1a1210'); }
+    for (let y = top; y < base; y++) {
+      const half = halfAt(y);
+      const course = Math.floor((y - top) / 4), row = (y - top) % 4;
       for (let x = cx - half; x < cx + half; x++) {
-        const rel = (x - cx + half) / (2 * half);
+        const rel = (x - (cx - half)) / (2 * half); // 0 = left (lit) .. 1 = right (shade)
         const off = course % 2 ? 3 : 0;
-        const joint = ((x + off) % 6 === 0);
-        let col = inCourse === 3 || joint ? '#2e1d18' : inCourse === 0 ? '#b07a5e' : rnd() < 0.15 ? '#96604a' : '#84503c';
-        if (!(inCourse === 3 || joint)) {
-          if (rel > 0.72) col = inCourse === 0 ? '#8c5440' : '#6a3c2c';
-          else if (rel < 0.22 && inCourse !== 0) col = '#96604a';
-        }
+        // bricks narrow toward the edges so the wall reads as curved
+        const bw = rel < 0.15 || rel > 0.85 ? 3 : 6;
+        const joint = (x + off) % bw === 0;
+        let col;
+        if (row === 3 || joint) col = '#2e1d18';
+        else if (row === 0) col = rel < 0.6 ? '#c08868' : '#8c5440';
+        else col = rel < 0.2 ? '#a46a52' : rel < 0.65 ? (rnd() < 0.15 ? '#9a6048' : '#8a5440') : rel < 0.85 ? '#6e3e2e' : '#552e22';
         g.p(x, y, col);
       }
       g.p(cx - half - 1, y, '#1e1210'); g.p(cx + half, y, '#1e1210');
     }
-    // chimney
-    g.r(30, 0, 8, 12, '#6a3c2c'); g.r(30, 0, 8, 1, '#b07a5e'); g.r(31, 1, 6, 2, '#1a1010');
-    g.r(29, 10, 10, 2, '#4a2a20');
-    // arched mouth
-    for (let y = 33; y < 47; y++) {
-      const half = y < 37 ? Math.round(Math.sqrt(Math.max(0, 16 - (37 - y) ** 2)) * 1.6) : 6;
-      g.r(cx - half, y, half * 2, 1, '#140c0a');
+    // the cap on top of the dome
+    g.r(cx - 7, top - 1, 14, 2, '#5a3428'); g.r(cx - 7, top - 1, 14, 1, '#8c5440');
+    // iron bands round the belly
+    for (const y of [30, 44]) {
+      for (let x = cx - 23; x < cx + 23; x++) { const rel = (x - cx + 23) / 46; g.p(x, y, rel < 0.3 ? '#6a6a74' : rel < 0.75 ? '#46464e' : '#2e2e34'); }
+      g.p(cx - 18, y, '#8a8a94'); g.p(cx + 4, y, '#8a8a94');
     }
-    g.r(cx - 8, 46, 16, 1, '#5e3c30');
-    // keystone + soot
-    g.r(cx - 2, 30, 4, 3, '#a87060');
-    g.p(cx - 3, 31, '#3a2620'); g.p(cx + 3, 30, '#3a2620');
+    // chimney
+    g.r(cx + 6, 0, 7, 12, '#7a4434'); g.r(cx + 6, 0, 2, 12, '#9a5a44'); g.r(cx + 11, 0, 2, 12, '#4a2a20');
+    g.r(cx + 5, 0, 9, 2, '#5a3428'); g.r(cx + 7, 0, 5, 1, '#140c0a');
+    // arched firebox mouth with a brick arch around it
+    const mx0 = cx - 7, mx1 = cx + 7, mTop = 38;
+    for (let y = mTop - 3; y < base; y++) for (let x = mx0 - 3; x < mx1 + 3; x++) {
+      const ay = Math.max(0, mTop + 4 - y), arch = ((x - cx + 0.5) / 7) ** 2 + (ay / 6) ** 2;
+      const outer = ((x - cx + 0.5) / 10) ** 2 + (Math.max(0, mTop + 4 - y) / 9) ** 2;
+      if (arch <= 1 && y >= mTop - 2) g.p(x, y, y > base - 3 ? '#2a1a14' : '#140c0a');
+      else if (outer <= 1) g.p(x, y, (x + y) % 3 === 0 ? '#2e1d18' : y < mTop ? '#c08868' : '#a46a52');
+    }
+    g.r(cx - 8, base - 1, 16, 1, '#3a2620');
   });
   S.bld.hearth = mk(16, 16, (g) => {
     const rnd = mulberry32(14);
