@@ -821,37 +821,41 @@ export function createRenderer(glCanvas, overlay, S) {
       oc.fillStyle = p.color; oc.fillText(p.name, sx, sy);
     }
 
-    // flares: where did they come from?
+    // flares: where did they come from? Ones in plain view are labelled where they are; the rest
+    // get an arrow on a ring around you (not the screen edge, where the HUD panels would cover it).
+    const [px, py] = toS(st.me.x * TILE, st.me.y * TILE);
+    const ring = Math.min(120 * dpr * (R.ui || 1), Math.min(overlay.width, overlay.height) * 0.28);
     for (const f of R.flares) {
       if (f.t < 0.9) continue;
       const [fx, fy] = toS(f.x * TILE, f.y * TILE);
-      const cx = overlay.width / 2, cy = overlay.height / 2;
       const dist = Math.round(Math.hypot(f.x - st.me.x, f.y - st.me.y));
       const fade = Math.min(1, (FLARE_TIME - f.t) / 4);
       const label = `${f.name} · ${dist}m`;
-      const m = 40 * dpr;
       oc.globalAlpha = fade;
       oc.font = `${Math.round(12 * dpr * (R.ui || 1))}px "Tiny5", monospace`;
       oc.textAlign = 'center';
-      if (fx > m && fx < overlay.width - m && fy > m && fy < overlay.height - m) {
+      // in plain view (clear of the HUD round the edges): label it where it is
+      const W = overlay.width, H = overlay.height;
+      if (fx > W * 0.15 && fx < W * 0.85 && fy > H * 0.2 && fy < H * 0.78) {
         const tw = oc.measureText(label).width;
         oc.fillStyle = 'rgba(10, 7, 8, 0.72)'; oc.fillRect(fx - tw / 2 - 4 * dpr, fy + 8 * dpr, tw + 8 * dpr, 16 * dpr);
         oc.fillStyle = f.color; oc.fillText(label, fx, fy + 20 * dpr);
       } else {
-        // clamp the direction to the screen edge
-        const ang = Math.atan2(fy - cy, fx - cx);
-        const kx = (cx - m) / Math.abs(Math.cos(ang) || 1e-6), ky = (cy - m) / Math.abs(Math.sin(ang) || 1e-6);
-        const k = Math.min(kx, ky);
-        const ax = cx + Math.cos(ang) * k, ay = cy + Math.sin(ang) * k;
+        const ang = Math.atan2(fy - py, fx - px);
+        const ax = px + Math.cos(ang) * ring, ay = py + Math.sin(ang) * ring;
         const sz = 12 * dpr * (R.ui || 1);
         oc.save(); oc.translate(ax, ay); oc.rotate(ang);
-        oc.fillStyle = 'rgba(10, 7, 8, 0.8)';
-        oc.beginPath(); oc.moveTo(sz + 3 * dpr, 0); oc.lineTo(-sz * 0.7 - 2 * dpr, -sz * 0.8 - 2 * dpr); oc.lineTo(-sz * 0.7 - 2 * dpr, sz * 0.8 + 2 * dpr); oc.fill();
-        oc.fillStyle = Math.sin(f.t * 6) > 0 ? f.color : '#fff6d8';
-        oc.beginPath(); oc.moveTo(sz, 0); oc.lineTo(-sz * 0.7, -sz * 0.8); oc.lineTo(-sz * 0.7, sz * 0.8); oc.fill();
+        // a slim notched arrowhead, so which way it points reads at a glance
+        const head = (k, o) => { oc.beginPath(); oc.moveTo(sz * k + o, 0); oc.lineTo(-sz * 0.7 * k - o, -sz * 0.55 * k - o); oc.lineTo(-sz * 0.3 * k, 0); oc.lineTo(-sz * 0.7 * k - o, sz * 0.55 * k + o); oc.closePath(); oc.fill(); };
+        oc.fillStyle = 'rgba(10, 7, 8, 0.85)'; head(1, 3 * dpr);
+        oc.fillStyle = Math.sin(f.t * 6) > 0 ? f.color : '#fff6d8'; head(1, 0);
         oc.restore();
-        const lx = ax - Math.cos(ang) * 34 * dpr, ly = ay - Math.sin(ang) * 26 * dpr;
+        // the label sits just past the arrow's tip: far enough along the arrow that its box
+        // (half-size hw x hh) clears the tip whichever way it points
         const tw = oc.measureText(label).width;
+        const hw = tw / 2 + 4 * dpr, hh = 8 * dpr, c = Math.abs(Math.cos(ang)) || 1e-6, sn = Math.abs(Math.sin(ang)) || 1e-6;
+        const d = sz + 6 * dpr + Math.min(hw / c, hh / sn);
+        const lx = ax + Math.cos(ang) * d, ly = ay + Math.sin(ang) * d + 4 * dpr;
         oc.fillStyle = 'rgba(10, 7, 8, 0.72)'; oc.fillRect(lx - tw / 2 - 4 * dpr, ly - 12 * dpr, tw + 8 * dpr, 16 * dpr);
         oc.fillStyle = f.color; oc.fillText(label, lx, ly);
       }

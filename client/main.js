@@ -1,5 +1,5 @@
 import { World, unkey } from '../shared/world.js';
-import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, FIRE_STAGES, FEEDS, FUEL_NAMES, BLUEPRINTS } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, FIRE_STAGES, FEEDS, FUEL_NAMES, BLUEPRINTS, BLUEPRINT_FINDS, SHRINE_BANDS } from '../shared/defs.js';
 import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_SPEED, PLAYER_HALF, PACKET_SPEED, DEFAULT_PORT, HOTBAR, FIRE_TIERS } from '../shared/constants.js';
 import { countItem, hasAll } from '../shared/inventory.js';
 import { makeSprites, FLAME_PALETTES } from './sprites.js';
@@ -94,6 +94,7 @@ function onMsg(m) {
       st.world = w;
       st.myId = m.id;
       st.known = new Set(m.known);
+      st.musicStage = null; // joining a world that's already a Blaze isn't it growing
       st.weather = m.weather;
       st.inv = m.inv;
       st.over = m.over;
@@ -462,6 +463,7 @@ function placeTip(tip, html) {
 // Crafting list: the result (what it is + its recipe), an ingredient (what you have vs need,
 // where to get it), or the Craft button.
 function craftTooltip(el) {
+  if (el.dataset.lost) return `<b>Blueprint: ${BLUEPRINTS[el.dataset.lost]}</b><br>${blueprintWhere(el.dataset.lost)}.<br>${DIM('Chests favour designs nobody has found yet, more so after a run of bad luck.')}`;
   if (el.classList.contains('recipe')) {
     const r = RECIPES.find((q) => q.id === el.querySelector('button').dataset.recipe);
     const miss = Object.entries(r.in).filter(([i, n]) => countItem(st.inv, i) < n).map(([i, n]) => `${n - countItem(st.inv, i)} ${ITEMS[i].name}`);
@@ -573,7 +575,7 @@ function featureHint(w, f, x, y) {
 function pct(v) { return Math.round(v * 100) + '%'; }
 function outStr(b) {
   const e = Object.entries(b.out || {}).filter(([, n]) => n > 0);
-  return e.length ? `<br>Holding: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')} ${DIM('(RMB: open)')}` : '';
+  return e.length ? `<br>Holding: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')} ${DIM('(RMB: grab)')}` : '';
 }
 function netLabel(net) {
   return net === 'fire' ? AMBER('Connected to the campfire') : net ? TEAL('Connected to an eternal flame (output goes to its cache)') : null;
@@ -599,7 +601,7 @@ function buildingInfo(w, b, x, y) {
     case 'rot_pit': {
       const n = countFeeders(w, x, y, b);
       const feeders = n ? AMBER(`Fed by ${n} Kindling Bush${n > 1 ? 'es' : ''} beside it`) : DIM('Plant Kindling Seeds right beside it and they feed it leaves');
-      return `Leaves: ${b.in}/20 ${DIM('(RMB: open)')}<br>Rotting: ${pct(b.p)}<br>${feeders}<br>${feeding() ?? link}${outStr(b)}`;
+      return `Leaves: ${b.in}/20 ${DIM('(RMB with leaves: add · Shift: stack)')}<br>Rotting: ${pct(b.p)}<br>${feeders}<br>${feeding() ?? link}${outStr(b)}`;
     }
     case 'rain_basin': {
       const wl = b.wl || 0;
@@ -630,7 +632,7 @@ function buildingInfo(w, b, x, y) {
       return AMBER(`Needs ${missing} more ${ITEMS[m.wall].name}${missing > 1 ? 's' : ''} around it (${m.size}x${m.size})`);
     }
     const lines = [];
-    if (m.in) lines.push(`${ITEMS[m.in[0]].name}: ${b.in}/${m.in[1]} ${DIM('(RMB: open)')}`);
+    if (m.in) lines.push(`${ITEMS[m.in[0]].name}: ${b.in || 0}/${m.in[1]} ${DIM(`(RMB with ${ITEMS[m.in[0]].name.toLowerCase()}: add · Shift: stack)`)}`);
     if (m.growTime && b.g < 1) lines.push(`Growing ${pct(b.g)}${DIM(` - then it turns ${ITEMS[m.in[0]].name.toLowerCase()}s into ${ITEMS[m.make[1]].name.toLowerCase()}`)}`);
     else if (m.make) lines.push(b.on ? `Making ${ITEMS[m.make[1]].name}: ${pct(b.p)}` : m.heat && !b.net ? RED('Needs an ember root touching its walls') : DIM(`Waiting for ${m.make[0]} ${ITEMS[m.in[0]].name.toLowerCase()}`));
     if (m.light) lines.push(b.lit ? `Lighting ${m.light * 2 + 1}x${m.light * 2 + 1} for everyone` : RED('Needs an ember root touching its walls to burn'));
@@ -732,8 +734,10 @@ function renderCont() {
   for (let ci = 0; ci < c.slots.length; ci++) grid.append(contSlotEl(c, ci));
 }
 function openContainerAt(x, y) {
+  // only real storage opens as an inventory (crates, eternal-flame caches); converters and
+  // producers are quick-grab: RMB is handled by the server click instead
   const c = st.world.containerAt(x, y);
-  if (!c) return false;
+  if (!c || c.kind === 'building') return false;
   if (Math.hypot(c.x + 0.5 - st.me.x, c.y + 0.5 - st.me.y) > REACH + 1.5) { R.float('Too far away', c.x + 0.5, c.y, '#bcd4ff'); return true; }
   for (const id of PANELS) $(id).hidden = true;
   st.cont = { x: c.x, y: c.y };
@@ -863,9 +867,31 @@ function renderCraft() {
     row.append(btn);
     list.append(row);
   }
-  const unknown = Object.keys(BLUEPRINTS).filter((id) => !st.known.has(id)).length;
-  if (unknown) list.insertAdjacentHTML('beforeend', `<p class="small dim">${unknown} design${unknown > 1 ? 's' : ''} still lost to the dark. Search ruins, dead campfires, mines and shrines for blueprints - the best lie farthest out.</p>`);
+  // designs still lost: greyed out, with what they unlock and where to look
+  const lost = Object.keys(BLUEPRINTS).filter((id) => !st.known.has(id));
+  if (lost.length) list.insertAdjacentHTML('beforeend', `<div class="lost-head">Lost designs <span class="dim">- find their blueprints out in the dark</span></div>`);
+  for (const id of lost) {
+    const unlocks = RECIPES.filter((r) => r.requires === id).map((r) => ITEMS[r.out[0]].name);
+    const row = document.createElement('div');
+    row.className = 'recipe lost';
+    row.dataset.lost = id;
+    row.innerHTML = `<img src="${iconURL['bp_' + id]}"><div><div class="name">${BLUEPRINTS[id]}</div><div class="note">Unlocks ${unlocks.join(', ')}</div><div class="note where">${blueprintWhere(id)}</div></div>`;
+    list.append(row);
+  }
   list.scrollTop = keepScroll;
+}
+
+// Where a blueprint can turn up, in plain words (from the same tables the world uses).
+function blueprintWhere(id) {
+  const SITE = { ruin: 'ruins', dead_fire: 'dead campfires', mine: 'collapsed mines' };
+  const where = [];
+  for (const [site, list] of Object.entries(BLUEPRINT_FINDS)) {
+    const e = list.find(([b]) => b === id);
+    if (e) where.push(`${SITE[site]}${e[1] ? ` (${e[1]}+ tiles out)` : ''}`);
+  }
+  const bands = SHRINE_BANDS.map(([, l], i) => (l.includes(id) ? ['near', 'middle', 'far'][i] : null)).filter(Boolean);
+  if (bands.length) where.push(`${bands.join(' and ')} shrines`);
+  return 'Found in ' + where.join(', ').replace(/, ([^,]*)$/, ' and $1');
 }
 
 // Pixel-art scrollbar for a .scroll element inside a panel (native bars can't be styled in Firefox).
@@ -1195,6 +1221,12 @@ function updateAudio(dt) {
   // Music follows the fire: full and warm when it's strong, thinning to a few lonely notes
   // as it weakens or when you're out in the dark.
   const dark = outside && !me.dead;
+  // Epic moments bring in the 16th-note arpeggios: the fire burning violet or hotter, and the
+  // ~40s after the campfire grows a stage (Bonfire, Blaze, Inferno).
+  const stage = w.stage();
+  if (st.musicStage != null && stage > st.musicStage) st.epicUntil = performance.now() + 40000;
+  st.musicStage = stage;
+  const epic = w.fire.fuel > 0 && (Math.round(w.fire.temp) >= FIRE_TIERS.indexOf('Violet') || performance.now() < (st.epicUntil ?? 0));
   if (st.over) audio.setMusic({});
   else if (me.dead) audio.setMusic({ bed: 0.5, lonely: 1.6 });
   else audio.setMusic({
@@ -1202,6 +1234,7 @@ function updateAudio(dt) {
     flow: !dark && r > 0.25 ? 1 : 0,
     melody: !dark && r > 0.45 ? 1 : 0,
     lonely: dark || r < 0.25 ? 1.6 : 0,
+    arp: !dark && epic ? 0.9 : 0,
   });
 }
 

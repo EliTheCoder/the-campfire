@@ -230,10 +230,12 @@ export function makeGen(seed) {
       else if (p < 0.94) add(dist > 60 ? 'resin' : 'peat', 1, 2);
       else if (!out.some((e) => e[0] === 'axe')) add('axe', 1, 1);
     }
-    // At most one blueprint per chest. Which one is picked when it's opened (the server favours
-    // designs nobody has read yet), so loot only says whether there is one and from which pool.
-    const pool = (BLUEPRINT_FINDS[s?.type] ?? BLUEPRINT_FINDS.ruin).filter(([, min]) => dist >= min).map(([id]) => id);
-    if (pool.length && rnd() < (BLUEPRINT_CHEST_CHANCE[s?.type] ?? 0.5)) out.blueprints = pool;
+    // At most one blueprint per chest. Whether there is one and which is picked is decided when it's
+    // opened (the server favours designs nobody has read yet, with bad-luck protection), so loot
+    // only reports the pool, the chest's base chance and its fixed roll.
+    out.blueprints = (BLUEPRINT_FINDS[s?.type] ?? BLUEPRINT_FINDS.ruin).filter(([, min]) => dist >= min).map(([id]) => id);
+    out.bpChance = BLUEPRINT_CHEST_CHANCE[s?.type] ?? 0.5;
+    out.bpRoll = rnd();
     return out;
   }
 

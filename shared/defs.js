@@ -85,6 +85,10 @@ export const SHRINE_BANDS = [
 ];
 // Unread designs are this many times likelier than ones the fire already knows.
 export const NEW_BLUEPRINT_WEIGHT = 3;
+// Bad-luck protection: every chest or shrine that doesn't turn up a new design (while some are
+// still lost) counts as a miss. Each miss raises a chest's blueprint chance and the pull toward
+// new designs; after this many misses in a row the next blueprint is a new one for certain.
+export const BLUEPRINT_PITY = { chanceBonus: 0.15, weightBonus: 1, guarantee: 3 };
 for (const [id, name] of Object.entries(BLUEPRINTS)) ITEMS['bp_' + id] = { name: 'Blueprint: ' + name, learn: id, desc: 'Right-click to read. Teaches everyone at the fire.', blueprint: true };
 
 export const BUILDINGS = {

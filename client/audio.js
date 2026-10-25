@@ -249,8 +249,8 @@ export function createAudio() {
   // fades each one in or out with the state of the fire. They're decoded and started on the
   // same audio-clock instant, so they stay sample-locked forever (separate media elements
   // drifted tens of ms apart - audible as the chords running ahead of the tune). Decoding at
-  // 22.05kHz keeps memory sane (~60MB for all four); every stem is lowpassed under 5kHz anyway.
-  const STEMS = ['bed', 'flow', 'melody', 'lonely'];
+  // 22.05kHz keeps memory sane (~75MB for all five); every stem is lowpassed under 5kHz anyway.
+  const STEMS = ['bed', 'flow', 'melody', 'lonely', 'arp'];
   const MUSIC_RATE = 22050;
   const stems = {};
   let musicT0 = 0, musicLen = 0;

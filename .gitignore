@@ -3,3 +3,4 @@ dist
 saves/
 music-src/build/
 music-src/soundfonts/
+__pycache__/

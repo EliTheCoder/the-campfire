@@ -233,7 +233,7 @@ export function buildWiki(iconURL, keyOf) {
     const coreItem = BUILDINGS[core].item;
     const bp = RECIPES.find((r) => r.out[0] === coreItem)?.requires;
     let html = `<p>${MB_INFO[core]}</p><h4>Layout (${m.size}x${m.size})</h4>${mbGrid(core)}<p class="dim">${item(coreItem)} in the middle, ${(m.size * m.size - 1)} ${item(m.wall)} around it. Place the core first and the missing spots show as outlines.</p>`;
-    if (m.in) html += `<p>Holds up to ${m.in[1]} ${item(m.in[0])}. Right-click it to open it: put them in its input slot and take its output - or let a neighbour feed it.</p>`;
+    if (m.in) html += `<p>Holds up to ${m.in[1]} ${item(m.in[0])}. Right-click it while holding them to put one in (Shift: the whole stack), and right-click it otherwise to grab everything it has made - or let a neighbour feed it and a root carry its output away.</p>`;
     if (m.heat) html += `<p>Heat cost on orange roots: ${m.draw} fuel/s while working. Free on teal roots.</p>`;
     if (m.fuse) html += `<p>When the last block goes in, it fuses into one structure. Breaking any part breaks the whole thing and drops every block.</p>`;
     const recipes = RECIPES.filter((r) => r.out[0] === coreItem || r.out[0] === m.wall);

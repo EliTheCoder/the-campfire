@@ -15,6 +15,8 @@ Stems (all the same length, played in sync by the game):
   flow    rolling broken chords (new)       - when the fire is doing okay
   melody  Eli's melody (+ his octave double) - when the fire is strong
   lonely  sparse, distant high notes (new)  - out in the dark / when the fire is low
+  arp     16th-note arpeggios (new)         - epic moments: violet fire or hotter, and for a
+                                              while after the campfire grows a stage
 
 Form (8-bar sections): A = Eli's phrase twice, then again with the octave doubling, a new
 bridge B in the same rhythms (Am - Em - C - D), and A to close.
@@ -134,6 +136,20 @@ def flow():
             notes.append((human(b * BAR + i * 0.5, 0.008), tones[idx], 0.9, vel(v, 2)))
     return notes
 
+def arp():
+    # new: bright 16th notes up and down the chord across two octaves above middle C, so it
+    # sparkles over the tune rather than crowding it; a little louder on each beat
+    notes = []
+    for b, (*_, chord) in enumerate(BARS_DATA):
+        pcs = sorted({p % 12 for p in chord}, key=lambda pc: (pc - chord[0]) % 12)  # root first
+        tones = sorted(60 + (pc - 60) % 12 for pc in pcs)                          # C4..B4
+        run = [t for o in (0, 12) for t in tones] + [tones[0] + 24]
+        seq = run + run[-2:0:-1]                                                   # up, then down
+        for i in range(16):
+            v = 30 + (8 if i % 4 == 0 else 0) + (4 if i == 0 else 0)
+            notes.append((human(b * BAR + i * 0.25, 0.004), seq[(i + b * 3) % len(seq)], 0.3, vel(v, 2)))
+    return notes
+
 def melody():
     notes = []
     for b, (mel, octv, *_) in enumerate(BARS_DATA):
@@ -196,6 +212,6 @@ def write_midi(path, notes, loops=2, pedal=True):
 if __name__ == '__main__':
     out = os.path.join(HERE, 'build')
     os.makedirs(out, exist_ok=True)
-    for name, fn in [('bed', bed), ('flow', flow), ('melody', melody), ('lonely', lonely)]:
-        write_midi(os.path.join(out, f'{name}.mid'), fn(), pedal=name != 'flow')
+    for name, fn in [('bed', bed), ('flow', flow), ('melody', melody), ('lonely', lonely), ('arp', arp)]:
+        write_midi(os.path.join(out, f'{name}.mid'), fn(), pedal=name not in ('flow', 'arp'))
     print(f'{BARS} bars at {BPM} bpm = {BARS * BAR * 60 / BPM:.2f}s per loop')

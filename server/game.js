@@ -1,5 +1,5 @@
 import { World, key, unkey, N4, N8, crateSlots, CRATE_SLOTS } from '../shared/world.js';
-import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, NEW_BLUEPRINT_WEIGHT, FIRE_STAGES, stackMax } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, NEW_BLUEPRINT_WEIGHT, BLUEPRINT_PITY, FIRE_STAGES, stackMax } from '../shared/defs.js';
 import { NOTES } from '../shared/worldgen.js';
 import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR, BASIN } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
@@ -60,6 +60,7 @@ export class Game {
     this.weather = { s: 'clear', t: 150 + Math.random() * 90 };
     this.windAcc = 0;
     this.known = new Set();
+    this.bpMisses = 0; // chests/shrines in a row that gave no new design (bad-luck protection)
     this.over = false;
     this.autoRevive = 0;
     this.draw = 0;
@@ -87,7 +88,7 @@ export class Game {
     return {
       version: 1, savedAt: new Date().toISOString(),
       seed: this.seed, time: w.time, fire: w.fire, over: this.over,
-      weather: this.weather, known: [...this.known], nextId: this.nextId,
+      weather: this.weather, known: [...this.known], bpMisses: this.bpMisses, nextId: this.nextId,
       feat: [...w.feat], bld: [...w.bld], drops: [...w.drops],
       players: [...this.players.values(), ...this.offline.values()].filter((p) => p.token).map(pl),
     };
@@ -101,6 +102,7 @@ export class Game {
     this.over = !!d.over;
     this.weather = d.weather ?? this.weather;
     this.known = new Set(d.known);
+    this.bpMisses = d.bpMisses ?? 0;
     this.nextId = Math.max(this.nextId, d.nextId ?? 1);
     for (const [k, v] of d.feat) w.feat.set(k, v);
     for (const [k, v] of d.bld) w.bld.set(k, v);
@@ -549,15 +551,32 @@ export class Game {
     return true;
   }
 
-  // Weighted pick that favours designs nobody has found yet (read, or carried unread), while
-  // still letting duplicates turn up.
+  // Designs nobody has found yet: not read, and not carried unread by anyone online.
+  foundBlueprints() {
+    const found = new Set(this.known);
+    for (const q of this.players.values()) for (const s of q.inv) if (s && ITEMS[s.item]?.learn) found.add(ITEMS[s.item].learn);
+    return found;
+  }
+
+  // Weighted pick that favours designs nobody has found yet, more so the longer the fire has
+  // gone without one, and certainly once BLUEPRINT_PITY.guarantee misses have piled up.
   pickBlueprint(pool) {
-    const held = new Set();
-    for (const q of this.players.values()) for (const s of q.inv) if (s && ITEMS[s.item]?.learn) held.add(ITEMS[s.item].learn);
-    const wt = pool.map((id) => (this.known.has(id) || held.has(id) ? 1 : NEW_BLUEPRINT_WEIGHT));
+    const found = this.foundBlueprints();
+    const fresh = pool.filter((id) => !found.has(id));
+    if (fresh.length && this.bpMisses >= BLUEPRINT_PITY.guarantee) pool = fresh;
+    const pull = NEW_BLUEPRINT_WEIGHT + this.bpMisses * BLUEPRINT_PITY.weightBonus;
+    const wt = pool.map((id) => (found.has(id) ? 1 : pull));
     let r = Math.random() * wt.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < pool.length; i++) if ((r -= wt[i]) < 0) return pool[i];
-    return pool[pool.length - 1];
+    let pick = pool[pool.length - 1];
+    for (let i = 0; i < pool.length; i++) if ((r -= wt[i]) < 0) { pick = pool[i]; break; }
+    return pick;
+  }
+
+  // After a chest or shrine: a new design resets the misses, anything else adds one (while any
+  // design is still lost).
+  countBlueprintLuck(gotNew) {
+    const lost = Object.keys(BLUEPRINTS).some((id) => !this.foundBlueprints().has(id));
+    this.bpMisses = gotNew || !lost ? 0 : this.bpMisses + 1;
   }
 
   click(p, x, y, slot, shift) {
@@ -606,7 +625,22 @@ export class Game {
         this.dB.add(key(x, y));
         return;
       }
-      return; // containers are opened (and emptied/filled) through the container ops
+      if (b.t === 'crate') return; // crates are opened as inventories (container ops)
+      // converters and producers: quick hands. Holding their input loads it (Shift/Ctrl: the
+      // whole stack); otherwise you grab everything they've made.
+      const inSpec = b.t === 'rot_pit' ? ['leaf', 20] : MULTIBLOCKS[b.t]?.in;
+      if (inSpec && s?.item === inSpec[0]) {
+        const n = Math.max(0, Math.min(shift ? s.n : 1, inSpec[1] - (b.in || 0)));
+        if (n) { b.in = (b.in || 0) + n; removeItem(p.inv, s.item, n); p.invDirty = true; this.dB.add(key(x, y)); }
+        else this.tell(p, `The ${BUILDINGS[b.t].name} is full.`);
+        return;
+      }
+      if (b.out && Object.values(b.out).some((n) => n > 0)) {
+        for (const [item, n] of Object.entries(b.out)) if (n > 0) this.give(p, item, n);
+        b.out = {};
+        this.dB.add(key(x, y));
+      }
+      return;
     }
 
     const f = w.getFeature(x, y);
@@ -614,7 +648,13 @@ export class Game {
       case 'chest':
         const loot = w.gen.loot(x, y);
         for (const [item, n] of loot) this.give(p, item, n);
-        if (loot.blueprints) this.give(p, 'bp_' + this.pickBlueprint(loot.blueprints), 1);
+        let gotNew = false;
+        if (loot.blueprints.length && loot.bpRoll < loot.bpChance + this.bpMisses * BLUEPRINT_PITY.chanceBonus) {
+          const bp = this.pickBlueprint(loot.blueprints);
+          gotNew = !this.foundBlueprints().has(bp);
+          this.give(p, 'bp_' + bp, 1);
+        }
+        this.countBlueprintLuck(gotNew);
         this.setF(x, y, { t: 'chest_open' });
         this.fx.push(['chest', x, y]);
         this.say(`${p.name} pried open an old chest.`, '#e0c070');
@@ -625,6 +665,7 @@ export class Game {
       case 'shrine': {
         const site = w.gen.siteAt(x, y);
         const bp = site?.band ? this.pickBlueprint(site.band) : site?.blueprint ?? 'kiln';
+        this.countBlueprintLuck(!this.foundBlueprints().has(bp));
         this.give(p, 'bp_' + bp, 1);
         this.setF(x, y, { t: 'shrine_empty' });
         this.fx.push(['chest', x, y]);

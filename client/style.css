@@ -99,6 +99,9 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); overf
 .recipe .note { font-size: 11px; color: var(--dim); margin-top: 3px; }
 .recipe.can { background: rgba(255, 170, 70, 0.06); }
 .recipe.locked { opacity: 0.5; }
+.lost-head { margin: 14px 6px 4px; font-size: 13px; color: var(--ink); }
+.recipe.lost { opacity: 0.55; filter: grayscale(0.6); grid-template-columns: 40px 1fr; }
+.recipe.lost .where { color: #d8b878; }
 button { font: inherit; font-weight: 600; color: #1a0f0c; background: linear-gradient(#ffd27a, #e8873a); border: 2px solid #000; box-shadow: 0 0 0 2px var(--edge); padding: 6px 14px; cursor: pointer; }
 button:disabled { background: #4a3a30; color: #8a7a68; cursor: default; }
 button:not(:disabled):hover { filter: brightness(1.1); }
