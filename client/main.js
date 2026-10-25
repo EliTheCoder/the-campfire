@@ -246,7 +246,7 @@ function toggle(id) {
   const el = $(id);
   el.hidden = !el.hidden;
   audio.play(el.hidden ? 'close' : 'open', { vol: 0.45 });
-  if (id === 'inv-panel') { cursor = null; dragFrom = -1; $('bottom').hidden = !el.hidden; }
+  if (id === 'inv-panel') { cursor = null; dragFrom = -1; }
   if (id === 'menu-panel' && !el.hidden) renderMenu();
   for (const u of scrollUpdaters) u();
   if (id === 'inv-panel') renderInv();
@@ -987,6 +987,7 @@ function updateHUD(dt) {
   else rp.hidden = true;
 
   if ((craftRefresh += dt) > 0.5 && invOpen()) { craftRefresh = 0; renderCraft(); }
+  $('bottom').hidden = invOpen(); // the inventory shows its own hotbar; however it was closed, bring this one back
 }
 
 // Placed torches burn down locally between server updates (which only arrive every few seconds),
