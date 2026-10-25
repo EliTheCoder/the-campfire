@@ -1023,6 +1023,17 @@ function updateAudio(dt) {
   const outside = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y));
   if (outside && me.held > 0) torchDist = 0.5;
   audio.update({ dt, fireStage, temp: w.fire.temp, weather: st.weather.s, freezing: me.freezing && !me.dead, cold: me.cold, eternalDist, torchDist });
+  // Music follows the fire: full and warm when it's strong, thinning to a few lonely notes
+  // as it weakens or when you're out in the dark.
+  const dark = outside && !me.dead;
+  if (st.over) audio.setMusic({});
+  else if (me.dead) audio.setMusic({ bed: 0.5, lonely: 1.6 });
+  else audio.setMusic({
+    bed: dark ? 0.55 : 1,
+    flow: !dark && r > 0.25 ? 1 : 0,
+    melody: !dark && r > 0.45 ? 1 : 0,
+    lonely: dark || r < 0.25 ? 1.6 : 0,
+  });
 }
 
 // ---------------- main menu scene ----------------
@@ -1101,6 +1112,7 @@ function frame(now) {
     R.draw(menuSt, dt, t);
     audio.listener.x = 0.5; audio.listener.y = 1.2;
     audio.update({ dt, fireStage: 3, temp: menuSt.world.fire.temp, weather: menuSt.weather.s, freezing: false, cold: 0, eternalDist: 99, torchDist: 99 });
+    audio.setMusic({ bed: 1, flow: 1, melody: 1 });
   }
   requestAnimationFrame(frame);
 }

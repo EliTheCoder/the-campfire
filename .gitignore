@@ -1,3 +1,5 @@
 node_modules
 dist
 saves/
+music-src/build/
+music-src/soundfonts/

@@ -244,15 +244,49 @@ export function createAudio() {
     set(eternal.g.gain, 0.025 * Math.max(0, 1 - s.eternalDist / 9), 0.5);
   };
 
+  // ---------- adaptive music ----------
+  // Four piano stems of the same piece loop in sync (rendered by music-src/render.sh); the game
+  // fades each one in or out with the state of the fire. Streamed as media elements (decoding
+  // four two-minute stems would cost ~200MB) and nudged back into sync if they ever drift.
+  const STEMS = ['bed', 'flow', 'melody', 'lonely'];
+  const stems = {};
   function loadMusic() {
-    const el = new Audio('music/theme.ogg');
-    el.loop = true;
-    el.addEventListener('canplaythrough', () => {
-      ctx.createMediaElementSource(el).connect(music);
-      el.play().catch(() => {});
-    }, { once: true });
-    el.addEventListener('error', () => {}, { once: true });
+    for (const name of STEMS) {
+      const el = new Audio(`music/${name}.ogg`);
+      el.loop = true;
+      el.preload = 'auto';
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      ctx.createMediaElementSource(el).connect(g).connect(music);
+      stems[name] = { el, g, target: 0 };
+    }
+    let started = false;
+    const startAll = () => {
+      if (started || STEMS.some((s) => stems[s].el.readyState < 3)) return;
+      started = true;
+      for (const s of STEMS) { stems[s].el.currentTime = 0; stems[s].el.play().catch(() => {}); }
+    };
+    for (const s of STEMS) stems[s].el.addEventListener('canplaythrough', startAll);
+    setInterval(() => {
+      if (!started) return;
+      const lead = stems.bed.el.currentTime;
+      for (const s of STEMS.slice(1)) {
+        const el = stems[s].el;
+        if (Math.abs(el.currentTime - lead) > 0.06 && Math.abs(el.currentTime - lead) < 100) el.currentTime = lead;
+      }
+    }, 2000);
   }
+  A.musicInfo = () => STEMS.map((s) => stems[s] && { s, t: +stems[s].el.currentTime.toFixed(2), paused: stems[s].el.paused, gain: +stems[s].g.gain.value.toFixed(2) });
+  // mix: { bed, flow, melody, lonely } target levels 0..~1.6. Changes glide over a few seconds.
+  A.setMusic = (mix) => {
+    if (!ctx) return;
+    for (const s of STEMS) {
+      const v = mix[s] ?? 0;
+      if (!stems[s] || Math.abs(stems[s].target - v) < 0.01) continue;
+      stems[s].target = v;
+      stems[s].g.gain.setTargetAtTime(v, ctx.currentTime, v > 0 ? 2.5 : 1.5);
+    }
+  };
 
   return A;
 }

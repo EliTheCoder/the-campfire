@@ -34,7 +34,10 @@ Balance knobs live in `shared/constants.js` and `shared/defs.js`.
 
 ## Audio
 
-Ambience (fire, rain, wind, freezing drone, eternal-flame hum) is synthesized live in `client/audio.js`. One-shot sounds are CC0 from Kenney (`public/sfx/`, license included). **Music slot:** drop a track at `public/music/theme.ogg` and it loops automatically. `M` mutes.
+Ambience (fire, rain, wind, freezing drone, eternal-flame hum) is synthesized live in `client/audio.js`. One-shot sounds are CC0 from Kenney (`public/sfx/`, license included). `M` mutes.
+
+### Music
+An adaptive piano score in four stems that loop in sync (`public/music/{bed,flow,melody,lonely}.ogg`); `client/audio.js` fades them with the fire's state (full when strong, thinning to `lonely` in the dark or when it's low). The score is code: edit `music-src/compose.py` (harmony, melody, voicings, tempo) and run `music-src/render.sh` (needs `fluidsynth`, `sox`, and the CC0 Upright Piano KW soundfont in `music-src/soundfonts/` from freepats.zenvoid.org). `public/music/preview-full.ogg` is the full mix for listening.
 
 ## Progression
 
