@@ -113,13 +113,13 @@ export const BUILDINGS = {
 // Multiblocks: a core surrounded by wall blocks (every other tile of a size x size square).
 // in: input item + capacity; make: [inputs per batch, output item, seconds]; heat: needs a
 // powered root touching its walls (draw = campfire fuel/sec while working, on orange roots).
-// grows: produces output without input (heart grove). light: shared light radius when running.
+// growTime: seconds to grow before it can work (heart grove's tree). light: shared light radius when running.
 export const MULTIBLOCKS = {
   kiln: { size: 3, wall: 'brick', in: ['log', 10], make: [2, 'charcoal', 15], heat: true, draw: 0.25, fuse: true },
   press: { size: 3, wall: 'timber', in: ['peat', 12], make: [3, 'lignite', 25], heat: false, fuse: true },
   coal_bed: { size: 5, wall: 'packed_earth', in: ['lignite', 12], make: [2, 'coal', 40], heat: true, draw: 0.6, fuse: true },
   forge_core: { size: 5, wall: 'fire_brick', in: ['coal', 10], make: [1, 'ember_crystal', 60], heat: true, draw: 1.5, fuse: true },
-  heart_seed: { size: 3, wall: 'glowmoss', grows: ['heartwood', 45], growTime: 120 },
+  heart_seed: { size: 3, wall: 'glowmoss', growTime: 120, in: ['log', 15], make: [5, 'heartwood', 90], heat: true, draw: 0.5 },
   watchfire: { size: 3, wall: 'fire_brick', heat: true, draw: 1.0, light: 5, fuse: true },
 };
 export const WALL_OF = {}; // wall block type -> multiblock core types using it

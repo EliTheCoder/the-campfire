@@ -27,9 +27,9 @@ export function buildWiki(iconURL, keyOf) {
     log: [`Chop a tree with a ${item('axe')}: 3 logs, a stick, and often a ${item('sapling')}. Bare trees give 2.`, `${bld('sapling')}s drop one every ~50s.`, 'Windfalls.', 'Old chests.'],
     peat: [`A ${bld('rot_pit')}: 4 leaves rot into 1 peat (20s, 10s in rain).`, 'Old chests near the fire.'],
     charcoal: [`A ${link('mb:kiln', 'Charcoal Kiln')}: 2 logs bake into 1 (15s).`, 'Sift the ashes of a dead campfire.', 'Chests farther out.'],
-    resin: [`A ${bld('resin_tap')} beside a grown Grove Tree (1 per 30s) or a Heart Grove (1 per 15s).`, 'Chests more than ~60 tiles out.'],
+    resin: [`A ${bld('resin_tap')} beside a grown Grove Tree (1 per 30s) or a Heart Grove (1 per 20s). Taps on the same tree share that.`, 'Chests more than ~60 tiles out.'],
     lignite: [`A ${link('mb:press', 'Peat Press')}: 3 peat squeeze into 1 (25s).`, 'Chests far from the fire.'],
-    heartwood: [`A ${link('mb:heart_seed', 'Heart Grove')}: one every 45s once grown.`, `Fell an ${link('world:ancient_tree', 'Ancient Tree')} with an axe: 3 at once.`],
+    heartwood: [`A ${link('mb:heart_seed', 'Heart Grove')}: 5 logs make 1 (90s, needs heat).`, `Fell an ${link('world:ancient_tree', 'Ancient Tree')} with an axe: 3 at once.`],
     coal: [`Mine ${link('world:mines', 'coal seams')} with a ${item('pickaxe')}: 1-2 per swing, three swings each.`, `A ${link('mb:coal_bed', 'Coal Bed')}: 2 lignite bake into 1 (40s).`, 'Chests in collapsed mines.'],
     ember_crystal: [`A ${link('mb:forge_core', 'Crystal Forge')}: grows 1 from each coal (60s).`],
     charred_stick: ['Every torch that burns out leaves one - carried or placed.', 'Sift a dead campfire\'s ashes.'],
@@ -98,7 +98,7 @@ export function buildWiki(iconURL, keyOf) {
     <p class="dim">Each ring goes outside the previous one. Start a ring (or hold its block) and the missing spots show as faint outlines. Ember roots pass straight through the rings to the fire.</p>
     <p>Fire Bricks and Ember Stones need blueprints: ${link('item:bp_blaze')} and ${link('item:bp_inferno')}.</p>`);
   add('guide:roots', G, 'Ember roots', 'ember_root', `
-    <p>${link('bld:root', 'Ember Roots')} carry the fire's heat outward, and carry fuel back in. Hold LMB or RMB with roots selected and drag to lay a line.</p>
+    <p>${link('bld:root', 'Ember Roots')} carry the fire's heat outward, and carry fuel back in. Hold RMB with roots selected and drag to lay a line (LMB still mines).</p>
     <h4>Orange roots (the campfire)</h4>
     <ul>
       <li>Grow out of the fire (or its rings) and connect up/down/left/right - never diagonally.</li>
@@ -196,7 +196,7 @@ export function buildWiki(iconURL, keyOf) {
     kindling: `<p>Plant in light. Grows for ~45s (twice as fast in rain), then sheds a ${item('leaf')} every ~7s - forever.</p><p>Beside a ${bld('rot_pit')} it feeds its leaves straight in.</p>`,
     sapling: `<p>Plant in light. Grows for ~90s into a Grove Tree (solid), which sheds a ${item('stick')} every ~14s and a ${item('log')} every ~50s.</p><p>Beside a ${link('mb:kiln', 'Charcoal Kiln')} its logs go straight in. A ${bld('resin_tap')} beside it drips resin.</p>`,
     rot_pit: `<p>Holds 20 ${item('leaf')}. Every 4 rot into 1 ${item('peat')} in 20s (10s in rain). Needs no heat.</p><p>Kindling Bushes beside it fill it; a ${link('mb:press', 'Peat Press')} beside it takes its peat.</p>`,
-    resin_tap: `<p>Place beside a grown Grove Tree (1 ${item('resin')} per 30s) or a Heart Grove (1 per 15s). Faster in rain.</p>`,
+    resin_tap: `<p>Place beside a grown Grove Tree (1 ${item('resin')} per 30s) or a Heart Grove (1 per 20s). Faster in rain. Every tap on the same tree shares its flow, so one tap per tree is enough.</p>`,
     crate: `<p>16 slots of storage. Right-click to open it, then move items between it and your inventory like your bag (drag, click, Shift-click to send a stack across). Buildings beside it store their output in it instead of sending it down the roots - perfect for stockpiling charcoal.</p><p>Breaking it gives you the crate and everything in it.</p>`,
     glowmoss: `<p>Gives off a faint 3x3 light, forever. Ring a ${item('heart_seed')} with 8 of these to grow a ${link('mb:heart_seed', 'Heart Grove')}.</p>`,
     hearth: `<p>A ring of 8 around the campfire grows it into a <b>Bonfire</b>. See ${link('guide:stages')}.</p>`,
@@ -225,7 +225,7 @@ export function buildWiki(iconURL, keyOf) {
     coal_bed: `Bakes ${item('lignite', 2)} into ${item('coal', 1)} every 40s. Needs heat. A Peat Press beside it feeds it; a Crystal Forge beside it takes the coal.`,
     forge_core: `Grows ${item('ember_crystal', 1)} from each ${item('coal')} in 60s. Needs heat. A Coal Bed beside it feeds it.`,
     watchfire: `When a powered root touches its walls it lights an 11x11 area for everyone - an outpost in the dark. On teal roots it's free.`,
-    heart_seed: `A ${item('heart_seed')} ringed by 8 ${item('glowmoss')} grows over ~2 minutes into a great tree that yields ${item('heartwood')} every 45s. The moss lights it, so it needs nothing else. A Resin Tap beside it drips twice as fast.`,
+    heart_seed: `A ${item('heart_seed')} ringed by 8 ${item('glowmoss')} grows over ~2 minutes into a great tree. Then it works like a kiln: put in ${item('log')}s and, with an ember root touching its moss (for heat), it turns every 5 logs into 1 ${item('heartwood')} (90s). A Resin Tap beside the grown tree drips a little faster than on a Grove Tree.`,
   };
   for (const [core, m] of Object.entries(MULTIBLOCKS)) {
     const name = BUILDINGS[core].name;

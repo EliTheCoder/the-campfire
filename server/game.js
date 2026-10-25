@@ -17,7 +17,7 @@ function newBuilding(t) {
     case 'rot_pit': return { t, in: 0, p: 0, out: {} };
     case 'resin_tap': return { t, p: 0, out: {} };
     case 'crate': return { t, slots: new Array(CRATE_SLOTS).fill(null) };
-    case 'heart_seed': return { t, g: 0, p: 0, out: {}, ok: false };
+    case 'heart_seed': return { t, g: 0, in: 0, p: 0, out: {}, ok: false };
     case 'watchfire': return { t, ok: false, lit: false };
     default: return MULTIBLOCKS[t] ? { t, in: 0, p: 0, out: {}, ok: false } : { t };
   }
@@ -886,13 +886,14 @@ export class Game {
           if (b.in >= 4 && (b.p += dt / (rain ? 10 : 20)) >= 1) { b.p = 0; b.in -= 4; addOut(b, 'peat'); }
           break;
         case 'resin_tap': {
-          // drips from a living grove tree or (twice as fast) a heart tree beside it
+          // Drips from a living grove tree or (a bit faster) a heart tree beside it. A tree's flow
+          // is shared by every tap on it, so ringing one tree with taps gains nothing.
           let rate = 0;
           for (const [dx, dy] of N4) {
             const nb = w.getB(x + dx, y + dy);
-            if (nb?.t === 'sapling' && nb.g >= 1) rate = Math.max(rate, 1 / 30);
+            if (nb?.t === 'sapling' && nb.g >= 1) rate = Math.max(rate, 1 / 30 / this.tapsOn([[x + dx, y + dy]]));
             const c = w.mbCoreFor(x + dx, y + dy);
-            if (c?.[2].t === 'heart_seed' && c[2].ok && c[2].g >= 1) rate = 1 / 15;
+            if (c?.[2].t === 'heart_seed' && c[2].ok && c[2].g >= 1) rate = Math.max(rate, 1 / 20 / this.tapsOn(w.mbTiles(c[0], c[1], 'heart_seed')));
           }
           b.on = rate > 0;
           if (rate && (b.p += dt * rate * (rain ? 1.5 : 1)) >= 1) { b.p = 0; addOut(b, 'resin'); }
@@ -916,6 +917,13 @@ export class Game {
     }
   }
 
+  // Resin taps touching any of these tiles (at least 1: the one asking).
+  tapsOn(tiles) {
+    const w = this.world, seen = new Set();
+    for (const [tx, ty] of tiles) for (const [dx, dy] of N4) if (w.getB(tx + dx, ty + dy)?.t === 'resin_tap') seen.add(tx + dx + ',' + (ty + dy));
+    return Math.max(1, seen.size);
+  }
+
   tickMultiblock(x, y, b, m, dt, grow, addOut) {
     const w = this.world;
     const was = b.ok;
@@ -927,15 +935,13 @@ export class Game {
     const net = b.ok && m.heat ? w.heatNet(w.mbTiles(x, y, b.t)) : null;
     b.net = net ? (net === 'fire' ? 'f' : 'e') : '';
     b.on = false;
-    if (m.make && b.ok && (!m.heat || net) && b.in >= m.make[0]) {
+    if (m.in) b.in ??= 0; // groves saved before they took input
+    const grown = !m.growTime || b.g >= 1;
+    if (m.growTime && b.ok && !grown) { b.on = true; b.g = Math.min(1, (b.g || 0) + dt / m.growTime * grow); }
+    if (m.make && b.ok && grown && (!m.heat || net) && b.in >= m.make[0]) {
       b.on = true;
       if (net === 'fire') this.draw += dt * m.draw;
       if ((b.p += dt / m.make[2]) >= 1) { b.p = 0; b.in -= m.make[0]; addOut(b, m.make[1]); }
-    }
-    if (m.grows && b.ok) {
-      b.on = true;
-      if (b.g < 1) b.g = Math.min(1, b.g + dt / m.growTime * grow);
-      else if ((b.p += dt / m.grows[1] * grow) >= 1) { b.p = 0; addOut(b, m.grows[0]); }
     }
     if (m.light) {
       const lit = b.ok && !!net;

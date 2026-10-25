@@ -302,8 +302,8 @@ for (const cv of [$('gl'), $('lo')]) {
     if (e.button === 1) e.preventDefault(); // no autoscroll / paste on middle click
     if (!st.world || st.me.dead) return;
     if (e.button === 1) { pickBlock(); return; }
-    // Holding ember roots: press and drag (either button) to lay a line of them.
-    if ((e.button === 0 || e.button === 2) && st.inv[st.sel]?.item === 'ember_root' && st.hover) {
+    // Holding ember roots: right-click and drag to lay a line of them (LMB still mines).
+    if (e.button === 2 && st.inv[st.sel]?.item === 'ember_root' && st.hover) {
       st.rootDrag = { x: st.hover.x, y: st.hover.y };
       send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: false });
       return;
@@ -626,15 +626,15 @@ function buildingInfo(w, b, x, y) {
     }
     const lines = [];
     if (m.in) lines.push(`${ITEMS[m.in[0]].name}: ${b.in}/${m.in[1]} ${DIM('(RMB: open)')}`);
-    if (m.make) lines.push(b.on ? `Making ${ITEMS[m.make[1]].name}: ${pct(b.p)}` : m.heat && !b.net ? RED('Needs an ember root touching its walls') : DIM(`Waiting for ${m.make[0]} ${ITEMS[m.in[0]].name.toLowerCase()}`));
-    if (m.grows) lines.push(b.g < 1 ? `Growing ${pct(b.g)}` : `Growing ${ITEMS[m.grows[0]].name}: ${pct(b.p)}`);
+    if (m.growTime && b.g < 1) lines.push(`Growing ${pct(b.g)}${DIM(` - then it turns ${ITEMS[m.in[0]].name.toLowerCase()}s into ${ITEMS[m.make[1]].name.toLowerCase()}`)}`);
+    else if (m.make) lines.push(b.on ? `Making ${ITEMS[m.make[1]].name}: ${pct(b.p)}` : m.heat && !b.net ? RED('Needs an ember root touching its walls') : DIM(`Waiting for ${m.make[0]} ${ITEMS[m.in[0]].name.toLowerCase()}`));
     if (m.light) lines.push(b.lit ? `Lighting ${m.light * 2 + 1}x${m.light * 2 + 1} for everyone` : RED('Needs an ember root touching its walls to burn'));
     if (m.heat && b.net) lines.push(b.net === 'e' ? TEAL('Heated by an eternal flame (free)') : AMBER(`Heated by the campfire (costs ${m.draw}/s)`));
     const feederType = FEEDER_OF[b.t];
     if (feederType) { const n = countFeeders(w, x, y, b); lines.push(n ? AMBER(`Fed by ${n} ${nameOf(feederType)}${n > 1 ? 's' : ''} beside it`) : DIM(`A ${nameOf(feederType)} placed beside it will feed it automatically`)); }
     const fed = feeding();
     if (fed) lines.push(fed);
-    else if (m.make || m.grows) lines.push(netLabel(w.heatNet(w.mbTiles(x, y, b.t))) ?? DIM('Put an ember root beside it to send its output away'));
+    else if (m.make) lines.push(netLabel(w.heatNet(w.mbTiles(x, y, b.t))) ?? DIM('Put an ember root beside it to send its output away'));
     if (m.fuse) lines.push(DIM('Hold LMB: break it (drops every block)'));
     return lines.join('<br>') + outStr(b);
   }
@@ -715,8 +715,8 @@ function renderCont() {
   else if (c.kind === 'eternal') info = 'Buildings on its teal roots send their output here. Take what you need.';
   else {
     const b = c.b, m = MULTIBLOCKS[b.t];
-    const making = m?.make?.[1] ?? (b.t === 'rot_pit' ? 'peat' : m?.grows?.[0]);
-    info = b.on || (b.t === 'rot_pit' && b.in >= 4) ? `Making ${ITEMS[making]?.name ?? '...'}: ${Math.round((b.p || 0) * 100)}%`
+    const making = m?.growTime && b.g < 1 ? null : m?.make?.[1] ?? (b.t === 'rot_pit' ? 'peat' : null);
+    info = m?.growTime && b.g < 1 ? `Growing: ${Math.round((b.g || 0) * 100)}%` : b.on || (b.t === 'rot_pit' && b.in >= 4) ? `Making ${ITEMS[making]?.name ?? '...'}: ${Math.round((b.p || 0) * 100)}%`
       : c.slots[0]?.role === 'in' ? `Put ${ITEMS[c.slots[0].item].name} in to start.` : 'Its output collects here until something takes it.';
   }
   $('cont-info').textContent = info;
