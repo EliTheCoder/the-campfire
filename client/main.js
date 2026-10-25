@@ -798,7 +798,7 @@ function showWiki(id, push = true) {
   wikiCur = a.id;
   $('wiki-article').innerHTML = `<h2>${iconURL[a.icon] ? `<img src="${iconURL[a.icon]}">` : ''}${a.title}</h2><div class="dim small">${a.cat}</div>${a.html}`;
   $('wiki-article').scrollTop = 0;
-  $('wiki-back').disabled = !wikiHist.length;
+  $('wiki-back').hidden = !wikiHist.length; // only shown once there's somewhere to go back to
   renderWikiNav();
 }
 function renderWiki() { wikiData(); showWiki(wikiCur, false); }
