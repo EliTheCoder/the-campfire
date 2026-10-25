@@ -126,7 +126,12 @@ def flow():
         pat = FLOW_PATTERNS[(b * 3 + b // 8) % len(FLOW_PATTERNS)]
         for beat, idx in pat:
             v = 30 + (6 if beat == 0 else 0) + rng.uniform(-4, 4)
-            notes.append((human(b * BAR + beat), up[idx], 1.0, vel(v, 2)))
+            # an octave below the voicing, so the rolling chords sit under the melody instead of
+            # in its range; anything that would drop below E3 stays up to avoid mud with the bass
+            p = up[idx] - 12
+            if p < N['E3']:
+                p += 12
+            notes.append((human(b * BAR + beat), p, 1.0, vel(v, 2)))
     return notes
 
 def melody():

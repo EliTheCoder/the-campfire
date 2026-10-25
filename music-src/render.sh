@@ -17,8 +17,15 @@ for s in $STEMS; do
     -F "build/$s-raw.wav" "$SF" "build/$s.mid" >/dev/null
   # felt-piano softness (roll off the top), a big warm room, then cut the second pass:
   # it begins with the first pass's reverb tail, so the loop point is seamless
+  # each stem gets its own colour so they stay distinct: the rolling chords are dark and soft,
+  # the melody clear on top
+  case $s in
+    flow) TONE="lowpass 1700 treble -6 3000" ;;
+    melody) TONE="lowpass 4200 treble +1 3000" ;;
+    *) TONE="lowpass 2800 treble -3 3500" ;;
+  esac
   sox "build/$s-raw.wav" "build/$s-wet.wav" \
-    lowpass 2800 treble -3 3500 bass +2 120 \
+    $TONE bass +2 120 \
     reverb 78 55 100 100 30 -1 \
     trim "$LOOP" "$LOOP"
 done
