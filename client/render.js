@@ -823,7 +823,9 @@ export function createRenderer(glCanvas, overlay, S) {
 
     // flares: where did they come from? Ones in plain view are labelled where they are; the rest
     // get an arrow on a ring around you (not the screen edge, where the HUD panels would cover it).
-    const [px, py] = toS(st.me.x * TILE, st.me.y * TILE);
+    // centred on the screen (the camera follows you), not your exact position: the camera moves in
+    // whole pixels and you don't, so a ring on you would wobble by a pixel as you walk
+    const px = Math.round(overlay.width / 2), py = Math.round(overlay.height / 2);
     const ring = Math.min(120 * dpr * (R.ui || 1), Math.min(overlay.width, overlay.height) * 0.28);
     for (const f of R.flares) {
       if (f.t < 0.9) continue;
@@ -842,7 +844,7 @@ export function createRenderer(glCanvas, overlay, S) {
         oc.fillStyle = f.color; oc.fillText(label, fx, fy + 20 * dpr);
       } else {
         const ang = Math.atan2(fy - py, fx - px);
-        const ax = px + Math.cos(ang) * ring, ay = py + Math.sin(ang) * ring;
+        const ax = Math.round(px + Math.cos(ang) * ring), ay = Math.round(py + Math.sin(ang) * ring);
         const sz = 12 * dpr * (R.ui || 1);
         oc.save(); oc.translate(ax, ay); oc.rotate(ang);
         // a slim notched arrowhead, so which way it points reads at a glance
@@ -855,7 +857,7 @@ export function createRenderer(glCanvas, overlay, S) {
         const tw = oc.measureText(label).width;
         const hw = tw / 2 + 4 * dpr, hh = 8 * dpr, c = Math.abs(Math.cos(ang)) || 1e-6, sn = Math.abs(Math.sin(ang)) || 1e-6;
         const d = sz + 6 * dpr + Math.min(hw / c, hh / sn);
-        const lx = ax + Math.cos(ang) * d, ly = ay + Math.sin(ang) * d + 4 * dpr;
+        const lx = Math.round(ax + Math.cos(ang) * d), ly = Math.round(ay + Math.sin(ang) * d + 4 * dpr);
         oc.fillStyle = 'rgba(10, 7, 8, 0.72)'; oc.fillRect(lx - tw / 2 - 4 * dpr, ly - 12 * dpr, tw + 8 * dpr, 16 * dpr);
         oc.fillStyle = f.color; oc.fillText(label, lx, ly);
       }
