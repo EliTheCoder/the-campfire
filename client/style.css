@@ -122,3 +122,31 @@ button.alt:hover { background: #3a281e; filter: none; }
 button.small-btn { padding: 4px 12px; }
 button.danger { background: linear-gradient(#c8553a, #8a2a1a); color: #fff0e0; }
 button.danger.confirm { background: #e0301a; animation: pulse 0.4s infinite alternate; }
+
+/* ---------- panels outside the HUD + main menu ---------- */
+.panel { zoom: var(--ui, 1); z-index: 20; }
+.panel h3 { margin: 14px 0 6px; font-size: 15px; color: #e0a060; font-weight: normal; }
+.panel-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+#settings-panel, #controls-panel, #credits-panel { width: min(520px, calc(94vw / var(--ui, 1))); }
+.settings .set-row { display: grid; grid-template-columns: 150px 1fr 48px; align-items: center; gap: 10px; margin: 6px 0; }
+.settings .set-row button { grid-column: 2 / 4; justify-self: start; min-width: 140px; }
+.settings .val { text-align: right; color: var(--dim); }
+input[type=range] { -webkit-appearance: none; appearance: none; height: 8px; background: #1a0f0c; border: 2px solid #000; box-shadow: 0 0 0 2px var(--edge); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 18px; background: var(--edge-hi); border: 2px solid #000; cursor: pointer; }
+input[type=range]::-moz-range-thumb { width: 10px; height: 16px; background: var(--edge-hi); border: 2px solid #000; border-radius: 0; cursor: pointer; }
+input[type=range]::-moz-range-track { background: transparent; }
+#binds .bind { display: grid; grid-template-columns: 1fr 130px; align-items: center; gap: 10px; padding: 3px 0; border-bottom: 1px solid #2a1a10; }
+#binds .bind button { font-weight: normal; }
+#binds .bind button.listening { background: #e0a060; color: #1a0f0c; animation: pulse 0.5s infinite alternate; }
+.fixed-binds div { display: flex; justify-content: space-between; padding: 2px 0; color: var(--dim); }
+.fixed-binds b { color: var(--ink); font-weight: normal; }
+.credits p { margin: 6px 0; line-height: 1.4; }
+
+/* Main menu: column on the left, the living camp on the right. */
+.menu-screen { align-items: flex-start; padding-left: max(40px, 7vw); background: linear-gradient(90deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.55) 30%, rgba(0, 0, 0, 0) 55%); }
+.menu-col { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.menu-col h1 { font-size: clamp(36px, 5vw, 64px); text-align: left; }
+.menu-col .tag { margin: 0 0 14px; }
+.menu-col > button { width: 280px; text-align: left; padding-left: 16px; }
+.menu-col .name-row { width: 280px; margin-bottom: 6px; }
+.menu-col .name-row input { width: 200px; }

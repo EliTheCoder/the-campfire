@@ -10,16 +10,19 @@ export function createAudio() {
   let ctx = null, master, sfx, amb, music;
   const buffers = {};
   let noise = null;
-  const A = { muted: false, listener: { x: 0, y: 0 } };
-  try { A.muted = localStorage.getItem('campfire.muted') === '1'; } catch {}
+  const A = { muted: false, listener: { x: 0, y: 0 }, vol: { master: 0.8, sfx: 0.7, amb: 0.9, music: 0.35 } };
+  try {
+    A.muted = localStorage.getItem('campfire.muted') === '1';
+    Object.assign(A.vol, JSON.parse(localStorage.getItem('campfire.volume') || '{}'));
+  } catch {}
 
   A.init = () => {
     if (ctx) { ctx.resume(); return; }
     ctx = new AudioContext();
-    master = ctx.createGain(); master.gain.value = A.muted ? 0 : 0.8; master.connect(ctx.destination);
-    sfx = ctx.createGain(); sfx.gain.value = 0.7; sfx.connect(master);
-    amb = ctx.createGain(); amb.gain.value = 0.9; amb.connect(master);
-    music = ctx.createGain(); music.gain.value = 0.35; music.connect(master);
+    master = ctx.createGain(); master.gain.value = A.muted ? 0 : A.vol.master; master.connect(ctx.destination);
+    sfx = ctx.createGain(); sfx.gain.value = A.vol.sfx; sfx.connect(master);
+    amb = ctx.createGain(); amb.gain.value = A.vol.amb; amb.connect(master);
+    music = ctx.createGain(); music.gain.value = A.vol.music; music.connect(master);
     noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -38,8 +41,16 @@ export function createAudio() {
   A.toggleMute = () => {
     A.muted = !A.muted;
     try { localStorage.setItem('campfire.muted', A.muted ? '1' : '0'); } catch {}
-    if (master) master.gain.setTargetAtTime(A.muted ? 0 : 0.8, ctx.currentTime, 0.05);
+    if (master) master.gain.setTargetAtTime(A.muted ? 0 : A.vol.master, ctx.currentTime, 0.05);
     return A.muted;
+  };
+
+  // kind: master | sfx | amb | music, v: 0..1
+  A.setVolume = (kind, v) => {
+    A.vol[kind] = v;
+    try { localStorage.setItem('campfire.volume', JSON.stringify(A.vol)); } catch {}
+    const node = { master, sfx, amb, music }[kind];
+    if (node && ctx) node.gain.setTargetAtTime(kind === 'master' && A.muted ? 0 : v, ctx.currentTime, 0.05);
   };
 
   // ---------- helpers ----------

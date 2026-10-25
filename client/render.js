@@ -183,7 +183,8 @@ export function createRenderer(glCanvas, overlay, S) {
     const me = st.me;
     R.shake = Math.max(0, R.shake - dt);
     R.flash = Math.max(0, R.flash - dt * 1.5);
-    const sx = R.shake ? (Math.random() - 0.5) * 6 * R.shake : 0, sy = R.shake ? (Math.random() - 0.5) * 6 * R.shake : 0;
+    const shaking = R.shake && R.shakeOn !== false;
+    const sx = shaking ? (Math.random() - 0.5) * 6 * R.shake : 0, sy = shaking ? (Math.random() - 0.5) * 6 * R.shake : 0;
     R.camX = Math.round(me.x * TILE - R.W / 2 + sx);
     R.camY = Math.round(me.y * TILE - R.H / 2 + sy);
     const camX = R.camX, camY = R.camY;

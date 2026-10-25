@@ -148,30 +148,59 @@ $('restart').onclick = () => send({ t: 'restart' });
 // ---------------- input ----------------
 // All binds are physical key positions (e.code). Labels show what that key types on the
 // player's layout (e.g. KeyC reads "J" on Dvorak), like Minecraft does.
-const BINDS = {
+const DEFAULT_BINDS = {
   up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD',
-  inventory: 'KeyI', craft: 'KeyC', help: 'KeyH', drop: 'KeyQ', revive: 'KeyR',
-  palette: 'KeyP', mute: 'KeyM', uiDown: 'Minus', uiUp: 'Equal',
+  inventory: 'KeyI', craft: 'KeyC', help: 'KeyH', drop: 'KeyQ', revive: 'KeyR', chat: 'Enter',
+  graphics: 'F2', palette: 'KeyP', mute: 'KeyM', uiDown: 'Minus', uiUp: 'Equal',
 };
+const BIND_NAMES = {
+  up: 'Move up', left: 'Move left', down: 'Move down', right: 'Move right', inventory: 'Inventory', craft: 'Crafting',
+  help: 'How to play', drop: 'Drop item (Shift: stack)', revive: 'Revive a friend', chat: 'Chat', graphics: 'Toggle low graphics',
+  palette: 'Palette mode', mute: 'Mute', uiDown: 'UI smaller', uiUp: 'UI larger',
+};
+const BINDS = { ...DEFAULT_BINDS };
+try { Object.assign(BINDS, JSON.parse(localStorage.getItem('campfire.binds') || '{}')); } catch {}
+const saveBinds = () => { try { localStorage.setItem('campfire.binds', JSON.stringify(BINDS)); } catch {} };
 let layoutMap = null;
+const CODE_LABELS = { Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\', Backquote: '`', Space: 'Space', NumpadEnter: 'Num Enter' };
 function keyLabel(code) {
   const l = layoutMap?.get(code);
   if (l) return l.length === 1 ? l.toUpperCase() : l;
-  return code.replace(/^Key|^Digit/, '').replace('Minus', '-').replace('Equal', '=');
+  return CODE_LABELS[code] ?? code.replace(/^Key|^Digit/, '').replace(/^Arrow/, '').replace(/(Left|Right)$/, ' $1').trim();
 }
 const K = (action) => keyLabel(BINDS[action]);
 function refreshKeyLabels() {
   for (const el of document.querySelectorAll('[data-key]')) el.textContent = el.dataset.key.split(',').map((c) => keyLabel(BINDS[c] || c)).join(el.dataset.sep ?? '');
 }
-navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); }).catch(() => {});
+navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); renderBinds(); }).catch(() => {});
 refreshKeyLabels();
 
-const PANELS = ['inv-panel', 'craft-panel', 'help-panel', 'menu-panel'];
+const PANELS = ['inv-panel', 'craft-panel', 'help-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
 const keys = new Set();
 let mouse = { x: 0, y: 0, l: false };
 
+// Rebinding: the next key press goes to the action being rebound (captured before anything else).
+let rebinding = null;
 addEventListener('keydown', (e) => {
-  if (!st.world) return;
+  if (!rebinding) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.code !== 'Escape') {
+    const other = Object.keys(BINDS).find((a) => a !== rebinding && BINDS[a] === e.code);
+    if (other) BINDS[other] = BINDS[rebinding]; // taken: swap
+    BINDS[rebinding] = e.code;
+    saveBinds();
+    refreshKeyLabels();
+  }
+  rebinding = null;
+  renderBinds();
+}, true);
+
+addEventListener('keydown', (e) => {
+  if (!st.world) {
+    // main menu: Esc backs out of panels
+    if (e.code === 'Escape') closePanel(PANELS.find((id) => !$(id).hidden));
+    return;
+  }
   const chat = $('chat');
   if (document.activeElement === chat) {
     if (e.key === 'Enter') { const t = chat.value.trim(); if (t) send({ t: 'chat', text: t }); chat.value = ''; chat.hidden = true; chat.blur(); }
@@ -180,7 +209,7 @@ addEventListener('keydown', (e) => {
   }
   const c = e.code;
   keys.add(c);
-  if (c === 'Enter' || c === 'NumpadEnter') { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
+  if (c === BINDS.chat || (BINDS.chat === 'Enter' && c === 'NumpadEnter')) { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
   const digit = /^Digit([1-8])$/.exec(c);
   if (digit) { st.sel = Number(digit[1]) - 1; renderInv(); audio.play('tick', { vol: 0.4 }); }
   if (c === BINDS.mute) log(audio.toggleMute() ? `Sound muted. [${K('mute')}] to unmute.` : 'Sound on.', '#aaa');
@@ -190,12 +219,14 @@ addEventListener('keydown', (e) => {
   if (c === BINDS.help) toggle('help-panel');
   if (c === 'Escape') {
     const open = PANELS.filter((id) => !$(id).hidden);
-    if (open.length && !(open.length === 1 && open[0] === 'menu-panel')) for (const id of PANELS) $(id).hidden = true;
+    const sub = open.find((id) => $(id).dataset.back);
+    if (sub) closePanel(sub);
+    else if (open.length && !(open.length === 1 && open[0] === 'menu-panel')) for (const id of PANELS) $(id).hidden = true;
     else toggle('menu-panel');
   }
   if (c === BINDS.drop) send({ t: 'drop', slot: st.sel, all: e.shiftKey, x: st.hover?.x, y: st.hover?.y });
   if (c === BINDS.revive) send({ t: 'revive' });
-  if (c === 'F2') { e.preventDefault(); R.setLow(!R.low); log(`Graphics: ${R.low ? 'low (2D, fastest)' : 'full (WebGL effects)'}. [F2] to switch.`, '#aaa'); }
+  if (c === BINDS.graphics) { e.preventDefault(); R.setLow(!R.low); log(`Graphics: ${R.low ? 'low (2D, fastest)' : 'full (WebGL effects)'}. [${K('graphics')}] to switch.`, '#aaa'); }
   if (c === BINDS.palette) { R.palette = !R.palette; log(`Palette mode ${R.palette ? 'on' : 'off'}.`, '#aaa'); }
   st.uiBlocking = PANELS.some((id) => !$(id).hidden);
 });
@@ -626,11 +657,37 @@ $('craft-list').addEventListener('pointerdown', (e) => {
   audio.play('craft', { vol: 0.5 });
 });
 
+// ---------------- panels shared by the main menu and the Esc menu ----------------
+// A panel opened from another panel remembers it (data-back) and returns to it on Back/Esc.
+function openPanel(id, from) {
+  const el = $(id);
+  if (from) { $(from).hidden = true; el.dataset.back = from; } else delete el.dataset.back;
+  el.hidden = false;
+  if (id === 'settings-panel') renderSettings();
+  if (id === 'controls-panel') renderBinds();
+  for (const u of scrollUpdaters) u();
+  audio.play('open', { vol: 0.45 });
+  st.uiBlocking = PANELS.some((p) => !$(p).hidden);
+}
+function closePanel(id) {
+  if (!id) return;
+  const el = $(id);
+  el.hidden = true;
+  rebinding = null;
+  if (el.dataset.back) { const back = el.dataset.back; delete el.dataset.back; $(back).hidden = false; if (back === 'menu-panel') renderMenu(); }
+  audio.play('close', { vol: 0.45 });
+  st.uiBlocking = PANELS.some((p) => !$(p).hidden);
+}
+document.addEventListener('click', (e) => {
+  const open = e.target.closest('[data-open]');
+  if (open) openPanel(open.dataset.open, open.closest('.panel')?.id);
+  const close = e.target.closest('[data-close]');
+  if (close) closePanel(close.closest('.panel').id);
+});
+
 // ---------------- Esc menu ----------------
 let giveupArmed = 0;
 function renderMenu() {
-  $('m-gfx').textContent = `Graphics: ${R.low ? 'Low (fast)' : 'Full'}`;
-  $('m-sound').textContent = `Sound: ${audio.muted ? 'Off' : 'On'}`;
   const g = $('m-giveup');
   const armed = performance.now() - giveupArmed < 3000;
   g.textContent = st.me.dead ? 'You are already gone...' : armed ? 'Click again to confirm' : 'Give in to the dark';
@@ -638,18 +695,60 @@ function renderMenu() {
   g.disabled = st.me.dead;
 }
 $('m-resume').onclick = () => toggle('menu-panel');
-$('m-help').onclick = () => { toggle('menu-panel'); toggle('help-panel'); };
-$('m-gfx').onclick = () => { R.setLow(!R.low); renderMenu(); };
-$('m-sound').onclick = () => { audio.toggleMute(); renderMenu(); };
-const nudgeUI = (f) => { uiNudge = Math.max(0.6, Math.min(2, uiNudge * f)); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); };
-$('m-ui-down').onclick = () => nudgeUI(0.9);
-$('m-ui-up').onclick = () => nudgeUI(1.1);
 $('m-giveup').onclick = () => {
   if (performance.now() - giveupArmed < 3000) { send({ t: 'giveup' }); giveupArmed = 0; toggle('menu-panel'); }
   else { giveupArmed = performance.now(); setTimeout(renderMenu, 3050); }
   renderMenu();
 };
-$('m-leave').onclick = () => { $('menu-panel').hidden = true; st.ws?.close(); };
+$('m-leave').onclick = () => { for (const id of PANELS) $(id).hidden = true; st.ws?.close(); };
+
+// ---------------- settings ----------------
+let shakeOn = true;
+try { shakeOn = localStorage.getItem('campfire.shake') !== '0'; R.palette = localStorage.getItem('campfire.palette') === '1'; } catch {}
+R.shakeOn = shakeOn;
+const onOff = (v) => (v ? 'On' : 'Off');
+function renderSettings() {
+  $('s-gfx').textContent = R.low ? 'Low (fast)' : 'Full';
+  $('s-palette').textContent = onOff(R.palette);
+  $('s-shake').textContent = onOff(R.shakeOn);
+  $('s-mute').textContent = audio.muted ? 'Muted' : 'Off';
+  $('s-ui').value = Math.round(uiNudge * 100);
+  $('s-ui-v').textContent = Math.round(uiNudge * 100) + '%';
+  for (const k of ['master', 'sfx', 'amb', 'music']) {
+    $('s-vol-' + k).value = Math.round(audio.vol[k] * 100);
+    document.querySelector(`.val[data-for="s-vol-${k}"]`).textContent = Math.round(audio.vol[k] * 100);
+  }
+}
+$('s-gfx').onclick = () => { R.setLow(!R.low); renderSettings(); };
+$('s-palette').onclick = () => { R.palette = !R.palette; try { localStorage.setItem('campfire.palette', R.palette ? '1' : '0'); } catch {} renderSettings(); };
+$('s-shake').onclick = () => { R.shakeOn = !R.shakeOn; try { localStorage.setItem('campfire.shake', R.shakeOn ? '1' : '0'); } catch {} renderSettings(); };
+$('s-mute').onclick = () => { audio.toggleMute(); renderSettings(); };
+$('s-ui').oninput = (e) => { uiNudge = Number(e.target.value) / 100; try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); $('s-ui-v').textContent = e.target.value + '%'; };
+for (const k of ['master', 'sfx', 'amb', 'music']) {
+  $('s-vol-' + k).oninput = (e) => { audio.setVolume(k, Number(e.target.value) / 100); document.querySelector(`.val[data-for="s-vol-${k}"]`).textContent = e.target.value; };
+  $('s-vol-' + k).onchange = () => { if (k === 'sfx') audio.play('pluck', { vol: 0.6 }); };
+}
+
+// ---------------- controls (rebinding) ----------------
+function renderBinds() {
+  const box = $('binds');
+  if (!box) return;
+  box.replaceChildren();
+  for (const [action, label] of Object.entries(BIND_NAMES)) {
+    const row = document.createElement('div');
+    row.className = 'bind';
+    const btn = document.createElement('button');
+    btn.className = 'alt' + (rebinding === action ? ' listening' : '');
+    btn.textContent = rebinding === action ? 'Press a key...' : keyLabel(BINDS[action]);
+    btn.onclick = () => { rebinding = action; renderBinds(); };
+    row.append(Object.assign(document.createElement('span'), { textContent: label }), btn);
+    box.append(row);
+  }
+}
+$('binds-reset').onclick = () => { Object.assign(BINDS, DEFAULT_BINDS); saveBinds(); refreshKeyLabels(); renderBinds(); };
+
+// Quit only makes sense in the desktop build.
+if (/Electron/i.test(navigator.userAgent)) { $('quit').hidden = false; $('quit').onclick = () => window.close(); }
 
 const logEl = $('log');
 function log(text, c = '#ddd') {
@@ -747,6 +846,54 @@ function updateAudio(dt) {
   audio.update({ dt, fireStage, temp: w.fire.temp, weather: st.weather.s, freezing: me.freezing && !me.dead, cold: me.cold, eternalDist, torchDist });
 }
 
+// ---------------- main menu scene ----------------
+// A little living camp behind the title: a Bonfire, root-fed torches, a working kiln,
+// glowmoss, fuel travelling home along the roots, and the odd rain shower.
+function makeMenuScene() {
+  const w = new World(424242);
+  const B = (x, y, b) => w.bld.set(`${x},${y}`, b);
+  for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) if (x || y) B(x, y, { t: 'hearth' });
+  for (let x = 2; x <= 6; x++) B(x, 0, { t: 'root', g: 1 });
+  for (let x = -2; x >= -6; x--) B(x, 0, { t: 'root', g: 1 });
+  for (let y = 2; y <= 4; y++) B(0, y, { t: 'root', g: 1 });
+  for (const [x, y] of [[7, 0], [-7, 0], [0, 5], [6, 1]]) B(x, y, { t: 'torch', fuel: 150, conn: true, net: 'f' });
+  // a formed, working kiln fed by a root, with a grove tree beside it
+  for (let y = -4; y <= -2; y++) for (let x = 3; x <= 5; x++) B(x, y, x === 4 && y === -3 ? { t: 'kiln', ok: true, on: true, net: 'f', in: 6, p: 0, out: {} } : { t: 'brick' });
+  B(4, -1, { t: 'root', g: 1 }); B(4, 0, { t: 'root', g: 1 });
+  B(6, -3, { t: 'sapling', g: 1, out: {} });
+  for (const [x, y] of [[-4, 3], [-5, 2], [-3, 4], [-6, -3]]) B(x, y, { t: 'glowmoss' });
+  for (const [x, y] of [[-2, 2], [2, 3], [-3, -2]]) B(x, y, { t: 'kindling', g: 1, out: {} });
+  B(-4, -4, { t: 'rot_pit', in: 6, p: 0, out: {} });
+  w.fire.fuel = 1300; w.fire.temp = 2;
+  w.lightDirty = w.rootDirty = w.stageDirty = true;
+  return { world: w, me: { x: 0.5, y: 1, f: 1, dead: false, held: 0, cold: 0, freezing: false }, players: new Map(), inv: [], sel: 0, packets: [], weather: { s: 'clear', t: 0 }, hover: null, harvest: null, uiBlocking: true, myId: -1 };
+}
+const menuSt = makeMenuScene();
+let menuPkAcc = 0, menuPkId = 1;
+function tickMenuScene(dt, t) {
+  const w = menuSt.world;
+  w.time += dt;
+  // slow drift around the camp; the fire's colour wanders through the heat tiers
+  // camera sits left of the fire so the camp frames the right side of the screen
+  menuSt.me.x = -5.5 + Math.sin(t * 0.07) * 1.6;
+  menuSt.me.y = 0.6 + Math.cos(t * 0.05) * 1.2;
+  w.fire.temp = Math.max(0, 2.2 + 2.6 * Math.sin(t * 0.035));
+  const phase = t % 100;
+  menuSt.weather.s = phase > 70 && phase < 72 ? 'rain_warn' : phase >= 72 && phase < 92 ? 'rain' : 'clear';
+  // fuel making its way home along the roots
+  if ((menuPkAcc += dt) > 1.3) {
+    menuPkAcc = 0;
+    const left = Math.random() < 0.5;
+    menuSt.packets.push({ id: menuPkId++, x: left ? -6 : 6, y: 0, nx: left ? -5 : 5, ny: 0, p: 0, item: ['leaf', 'stick', 'log', 'charcoal'][(Math.random() * 4) | 0] });
+  }
+  for (const pk of menuSt.packets) {
+    pk.p += dt * PACKET_SPEED;
+    if (pk.p >= 1) { pk.p -= 1; pk.x = pk.nx; pk.nx += Math.sign(-pk.nx); }
+  }
+  menuSt.packets = menuSt.packets.filter((pk) => Math.abs(pk.x) > 1);
+  if (Math.random() < dt * 0.4) R.fx(['feed', 'stick', 0], w);
+}
+
 // ---------------- loop ----------------
 let last = performance.now(), sendAcc = 0;
 function frame(now) {
@@ -769,9 +916,11 @@ function frame(now) {
     updateAudio(dt);
     R.draw(st, dt, t);
   } else {
-    // Main menu: sitting right beside a healthy campfire.
+    // Main menu: the living camp scene, and the sound of sitting right beside it.
+    tickMenuScene(dt, t);
+    R.draw(menuSt, dt, t);
     audio.listener.x = 0.5; audio.listener.y = 1.2;
-    audio.update({ dt, fireStage: 3, temp: 1, weather: 'clear', freezing: false, cold: 0, eternalDist: 99, torchDist: 99 });
+    audio.update({ dt, fireStage: 3, temp: menuSt.world.fire.temp, weather: menuSt.weather.s, freezing: false, cold: 0, eternalDist: 99, torchDist: 99 });
   }
   requestAnimationFrame(frame);
 }
