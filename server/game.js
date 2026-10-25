@@ -1,7 +1,7 @@
 import { World, key, unkey, N4, N8 } from '../shared/world.js';
-import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, FIRE_STAGES } from '../shared/defs.js';
+import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, FIRE_STAGES, stackMax } from '../shared/defs.js';
 import { NOTES } from '../shared/worldgen.js';
-import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF } from '../shared/constants.js';
+import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
 
 const OUT_CAP = 8;
@@ -176,6 +176,34 @@ export class Game {
   say(text, c = '#ddd') { this.broadcast({ t: 'msg', text, c }); }
   tell(p, text, c = '#ddd') { this.send(p.ws, { t: 'msg', text, c }); }
 
+  // Move n items from slot a to slot b: into an empty slot, onto a matching stack (up to its
+  // limit), or - when moving a whole stack onto a different item - swap the two.
+  invMove(p, a, b, n) {
+    const inv = p.inv;
+    if (a === b || inv[a] === undefined || inv[b] === undefined || !inv[a]) return;
+    const A = inv[a], B = inv[b];
+    n = Math.max(1, Math.min(n || A.n, A.n));
+    if (!B) { inv[b] = { item: A.item, n }; A.n -= n; }
+    else if (B.item === A.item) { const k = Math.min(n, stackMax(A.item) - B.n); B.n += k; A.n -= k; }
+    else if (n === A.n) { inv[a] = B; inv[b] = A; }
+    if (inv[a] && inv[a].n <= 0) inv[a] = null;
+    p.invDirty = true;
+  }
+
+  // Shift-click: send a stack between the hotbar and the backpack (merging first).
+  invQuick(p, a) {
+    const inv = p.inv, s = inv[a];
+    if (!s) return;
+    const range = a < HOTBAR ? [HOTBAR, inv.length] : [0, HOTBAR];
+    for (let i = range[0]; i < range[1] && s.n > 0; i++) {
+      const t = inv[i];
+      if (t && t.item === s.item) { const k = Math.min(s.n, stackMax(s.item) - t.n); t.n += k; s.n -= k; }
+    }
+    for (let i = range[0]; i < range[1] && s.n > 0; i++) if (!inv[i]) { inv[i] = { item: s.item, n: s.n }; s.n = 0; }
+    if (s.n <= 0) inv[a] = null;
+    p.invDirty = true;
+  }
+
   give(p, item, n) {
     const left = addItem(p.inv, item, n);
     if (left) this.addDrop(Math.floor(p.x), Math.floor(p.y), item, left);
@@ -276,7 +304,7 @@ export class Game {
         if (!s || p.dead) break;
         let tx = Math.floor(p.x), ty = Math.floor(p.y);
         if (Number.isInteger(m.x) && Number.isInteger(m.y) && this.inReach(p, m.x, m.y) && !this.world.isSolid(m.x, m.y)) { tx = m.x; ty = m.y; }
-        const n = m.all ? s.n : 1;
+        const n = m.all ? s.n : Math.max(1, Math.min(s.n, m.n | 0 || 1));
         this.addDrop(tx, ty, s.item, n);
         this.dropLocks.set(key(tx, ty), p.id);
         s.n -= n;
@@ -290,6 +318,8 @@ export class Game {
         if (p.inv[a] !== undefined && p.inv[b] !== undefined) { [p.inv[a], p.inv[b]] = [p.inv[b], p.inv[a]]; p.invDirty = true; }
         break;
       }
+      case 'move': this.invMove(p, m.a | 0, m.b | 0, m.n | 0); break;
+      case 'quick': this.invQuick(p, m.a | 0); break;
       case 'revive': {
         if (p.dead || Math.hypot(p.x - 0.5, p.y - 0.5) > 5) return;
         const target = [...this.players.values()].find((q) => q.dead && (m.id == null || q.id === m.id));

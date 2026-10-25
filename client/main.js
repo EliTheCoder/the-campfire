@@ -115,7 +115,7 @@ function onMsg(m) {
       if (m.D) for (const [k, v] of m.D) { if (v?.length) w.drops.set(k, v); else w.drops.delete(k); }
       st.packets = m.pk.map(([id, x, y, nx, ny, p, item]) => ({ id, x, y, nx, ny, p, item }));
       if (m.fx) for (const e of m.fx) { R.fx(e, w); audio.fx(e); }
-      if (m.B && !$('craft-panel').hidden) renderCraft();
+      if (m.B && invOpen()) renderCraft();
       break;
     }
     case 'inv': st.inv = m.inv; renderInv(); break;
@@ -176,7 +176,7 @@ function refreshKeyLabels() {
 navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); renderBinds(); }).catch(() => {});
 refreshKeyLabels();
 
-const PANELS = ['inv-panel', 'craft-panel', 'wiki-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
+const PANELS = ['inv-panel', 'wiki-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
 const keys = new Set();
 let mouse = { x: 0, y: 0, l: false };
 
@@ -214,11 +214,17 @@ addEventListener('keydown', (e) => {
   keys.add(c);
   if (c === BINDS.chat || (BINDS.chat === 'Enter' && c === 'NumpadEnter')) { chat.hidden = false; chat.focus(); e.preventDefault(); return; }
   const digit = /^Digit([1-8])$/.exec(c);
-  if (digit) { st.sel = Number(digit[1]) - 1; renderInv(); audio.play('tick', { vol: 0.4 }); }
+  if (digit) {
+    const k = Number(digit[1]) - 1;
+    const over = invOpen() ? slotUnder(document.elementFromPoint(mouse.x, mouse.y)) : -1;
+    if (over >= 0 && over !== k) { send({ t: 'swap', a: over, b: k }); cursor = null; }
+    else st.sel = k;
+    renderInv(); audio.play('tick', { vol: 0.4 });
+  }
   if (c === BINDS.mute) log(audio.toggleMute() ? `Sound muted. [${K('mute')}] to unmute.` : 'Sound on.', '#aaa');
   if (c === BINDS.uiDown || c === BINDS.uiUp) { uiNudge = Math.max(0.6, Math.min(2, uiNudge * (c === BINDS.uiDown ? 0.9 : 1.1))); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); }
   if (c === 'Tab' || c === BINDS.inventory) { e.preventDefault(); toggle('inv-panel'); }
-  if (c === BINDS.craft) toggle('craft-panel');
+  if (c === BINDS.craft) toggle('inv-panel');
   if (c === BINDS.help) toggleWiki();
   if (c === 'Escape') {
     const open = PANELS.filter((id) => !$(id).hidden);
@@ -240,10 +246,10 @@ function toggle(id) {
   const el = $(id);
   el.hidden = !el.hidden;
   audio.play(el.hidden ? 'close' : 'open', { vol: 0.45 });
-  if (id === 'craft-panel' && !el.hidden) renderCraft();
+  if (id === 'inv-panel') { cursor = null; dragFrom = -1; $('bottom').hidden = !el.hidden; }
   if (id === 'menu-panel' && !el.hidden) renderMenu();
   for (const u of scrollUpdaters) u();
-  if (id === 'inv-panel') { st.pick = -1; renderInv(); }
+  if (id === 'inv-panel') renderInv();
   st.uiBlocking = PANELS.some((id) => !$(id).hidden);
 }
 
@@ -409,6 +415,7 @@ function updateTooltip(x, y, inReach) {
   const w = st.world, tip = $('tooltip');
   // Hovering an inventory/hotbar slot takes priority over the world.
   const slotEl = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('.slot');
+  if (cursor) { tip.hidden = true; return; }
   if (slotEl) {
     const s = st.inv[Number(slotEl.dataset.slot)];
     if (s) placeTip(tip, itemTooltip(s)); else tip.hidden = true;
@@ -568,30 +575,95 @@ function buildingInfo(w, b, x, y) {
 // ---------------- HUD ----------------
 function fmtTime(s) { const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
-function renderInv() {
-  const mk = (i, withKey) => {
-    const s = st.inv[i];
-    const d = document.createElement('div');
-    d.className = 'slot' + (i === st.sel ? ' sel' : '') + (i === st.pick ? ' pick' : '') + (s && ITEMS[s.item].fuel ? ' fuel' : '');
-    d.dataset.slot = i;
-    if (s) d.innerHTML = `<img src="${iconURL[s.item]}">${s.n > 1 ? `<span class="n">${s.n}</span>` : ''}`;
-    if (withKey) d.insertAdjacentHTML('beforeend', `<span class="k">${i + 1}</span>`);
-    d.onmousedown = (e) => {
-      e.stopPropagation();
-      if (!$('inv-panel').hidden) {
-        if (st.pick < 0) st.pick = i;
-        else { if (st.pick !== i) send({ t: 'swap', a: st.pick, b: i }); st.pick = -1; }
-      } else st.sel = i;
-      renderInv();
-    };
-    return d;
-  };
-  const hb = $('hotbar'); hb.replaceChildren();
-  for (let i = 0; i < HOTBAR; i++) hb.append(mk(i, true));
-  const grid = $('inv-grid'); grid.replaceChildren();
-  for (let i = 0; i < st.inv.length; i++) grid.append(mk(i, i < HOTBAR));
-  if (!$('craft-panel').hidden) renderCraft();
+// ---------------- inventory (Minecraft-style) ----------------
+// A stack can ride on the cursor: `cursor` is {from, n} - n items still sitting in slot `from`
+// on the server until they're put down somewhere. Press-drag-release onto another slot is
+// drag-and-drop; press-release on the same slot leaves the stack on the cursor.
+let cursor = null, dragFrom = -1;
+function slotEl(i, big) {
+  const s = st.inv[i];
+  const d = document.createElement('div');
+  d.className = 'slot' + (i === st.sel && big ? ' sel' : '');
+  d.dataset.slot = i;
+  const lifted = cursor && cursor.from === i ? cursor.n : 0;
+  const n = s ? s.n - lifted : 0;
+  if (s && n > 0) d.innerHTML = `<img src="${iconURL[s.item]}">${n > 1 ? `<span class="n">${n}</span>` : ''}`;
+  else if (s && lifted) { d.classList.add('lifted'); d.innerHTML = `<img src="${iconURL[s.item]}">`; }
+  if (i < HOTBAR) d.insertAdjacentHTML('beforeend', `<span class="k">${i + 1}</span>`);
+  return d;
 }
+function renderInv() {
+  // drop a cursor stack the server no longer backs (e.g. the slot changed under us)
+  if (cursor) { const s = st.inv[cursor.from]; if (!s) cursor = null; else cursor.n = Math.min(cursor.n, s.n); }
+  const hb = $('hotbar'); hb.replaceChildren();
+  for (let i = 0; i < HOTBAR; i++) hb.append(slotEl(i, true));
+  const grid = $('inv-grid'); grid.replaceChildren();
+  for (let i = HOTBAR; i < st.inv.length; i++) grid.append(slotEl(i));
+  const ih = $('inv-hotbar'); ih.replaceChildren();
+  for (let i = 0; i < HOTBAR; i++) ih.append(slotEl(i, true));
+  const cs = $('cursor-stack');
+  cs.hidden = !cursor;
+  if (cursor) {
+    cs.querySelector('img').src = iconURL[st.inv[cursor.from].item];
+    cs.querySelector('.n').textContent = cursor.n > 1 ? cursor.n : '';
+    placeCursor();
+  }
+  if (!$('inv-panel').hidden) renderCraft();
+}
+function placeCursor() {
+  const z = R.ui || 1;
+  $('cursor-stack').style.left = (mouse.x - 22 * z) / z + 'px';
+  $('cursor-stack').style.top = (mouse.y - 22 * z) / z + 'px';
+}
+const invOpen = () => !$('inv-panel').hidden;
+const slotUnder = (target) => { const el = target?.closest?.('#inv-panel .slot'); return el ? Number(el.dataset.slot) : -1; };
+// Put n of the cursor stack into slot i.
+function putDown(i, n) {
+  if (i === cursor.from) { if (n >= cursor.n) cursor = null; return; }
+  send({ t: 'move', a: cursor.from, b: i, n });
+  audio.play('tick', { vol: 0.35, rate: 1.3 });
+  if (n >= cursor.n) cursor = null; else cursor.n -= n;
+}
+function throwCursor() {
+  send({ t: 'drop', slot: cursor.from, n: cursor.n, x: st.hover?.x, y: st.hover?.y });
+  cursor = null;
+  renderInv();
+}
+document.addEventListener('pointerdown', (e) => {
+  if (!invOpen()) {
+    // HUD hotbar: click to select
+    const el = e.target.closest?.('#hotbar .slot');
+    if (el) { e.stopPropagation(); st.sel = Number(el.dataset.slot); renderInv(); audio.play('tick', { vol: 0.3 }); }
+    return;
+  }
+  const i = slotUnder(e.target);
+  if (i < 0) {
+    // holding a stack and clicking outside the inventory throws it into the world
+    if (cursor && !e.target.closest('#inv-panel')) { e.preventDefault(); e.stopPropagation(); throwCursor(); }
+    return;
+  }
+  e.preventDefault(); e.stopPropagation();
+  const s = st.inv[i];
+  if (e.button === 0) {
+    if (!cursor) {
+      if (s && e.shiftKey) { send({ t: 'quick', a: i }); audio.play('tick', { vol: 0.35 }); }
+      else if (s) { cursor = { from: i, n: s.n }; dragFrom = i; audio.play('pluck', { vol: 0.35 }); }
+    } else putDown(i, cursor.n);
+  } else if (e.button === 2) {
+    if (!cursor) { if (s) { cursor = { from: i, n: Math.ceil(s.n / 2) }; audio.play('pluck', { vol: 0.35 }); } }
+    else putDown(i, 1);
+  }
+  renderInv();
+}, true);
+document.addEventListener('pointerup', (e) => {
+  if (dragFrom < 0) return;
+  const i = slotUnder(document.elementFromPoint(e.clientX, e.clientY));
+  if (cursor && i >= 0 && i !== dragFrom) putDown(i, cursor.n);
+  dragFrom = -1;
+  renderInv();
+});
+$('inv-panel').addEventListener('contextmenu', (e) => e.preventDefault());
+addEventListener('mousemove', () => { if (cursor) placeCursor(); });
 
 function nearStation(type) {
   const tx = Math.floor(st.me.x), ty = Math.floor(st.me.y);
@@ -599,27 +671,39 @@ function nearStation(type) {
   return false;
 }
 
+// Crafting: what you can make right now first, then what you're short of, then bench-only.
 function renderCraft() {
   if (!st.world) return;
-  const list = $('craft-list'); list.replaceChildren();
+  const list = $('craft-list');
+  const keepScroll = list.scrollTop;
+  list.replaceChildren();
   const bench = nearStation('workbench');
-  for (const r of RECIPES) {
-    if (r.requires && !st.known.has(r.requires)) continue;
-    const ok = hasAll(st.inv, r.in) && (!r.station || bench);
+  const station = $('craft-station');
+  station.textContent = bench ? 'at a Workbench' : 'no Workbench nearby - basic recipes only';
+  station.classList.toggle('on', bench);
+  const rank = (r) => (r.station && !bench ? 2 : hasAll(st.inv, r.in) ? 0 : 1);
+  const recipes = RECIPES.filter((r) => !r.requires || st.known.has(r.requires)).sort((a, b) => rank(a) - rank(b));
+  for (const r of recipes) {
+    const can = rank(r) === 0;
     const row = document.createElement('div');
-    row.className = 'recipe' + (r.station && !bench ? ' locked' : '');
-    const ing = Object.entries(r.in).map(([i, n]) => { const have = countItem(st.inv, i); return `<span class="${have >= n ? 'ok' : 'miss'}">${n} ${ITEMS[i].name} (${have})</span>`; }).join(' · ');
+    row.className = 'recipe' + (can ? ' can' : '') + (rank(r) === 2 ? ' locked' : '');
     const it = ITEMS[r.out[0]];
-    row.innerHTML = `<img src="${iconURL[r.out[0]]}"><div><div class="name">${it.name}${r.out[1] > 1 ? ' x' + r.out[1] : ''}</div><div class="ing">${ing}</div>${it.desc ? `<div class="ing">${it.desc}</div>` : ''}${r.station ? `<div class="station">${bench ? 'At Workbench' : 'Requires a nearby Workbench'}</div>` : ''}</div>`;
+    const chips = Object.entries(r.in).map(([i, n]) => {
+      const have = countItem(st.inv, i);
+      return `<span class="chip ${have >= n ? '' : 'miss'}" title="${ITEMS[i].name}"><img src="${iconURL[i]}">${have}/${n}</span>`;
+    }).join('');
+    row.innerHTML = `<img src="${iconURL[r.out[0]]}" title="${it.desc ?? ''}"><div><div class="name">${it.name}${r.out[1] > 1 ? ` <span class="x">x${r.out[1]}</span>` : ''}</div><div class="ings">${chips}</div>${r.station && !bench ? '<div class="note">needs a Workbench nearby</div>' : ''}</div>`;
     const btn = document.createElement('button');
     btn.textContent = 'Craft';
-    btn.disabled = !ok;
+    btn.title = 'Shift-click to craft up to 10';
+    btn.disabled = !can;
     btn.dataset.recipe = r.id;
     row.append(btn);
     list.append(row);
   }
   const unknown = Object.keys(BLUEPRINTS).filter((id) => !st.known.has(id)).length;
   if (unknown) list.insertAdjacentHTML('beforeend', `<p class="small dim">${unknown} design${unknown > 1 ? 's' : ''} still lost to the dark. Search ruins, dead campfires, mines and shrines for blueprints - the best lie farthest out.</p>`);
+  list.scrollTop = keepScroll;
 }
 
 // Pixel-art scrollbar for a .scroll element inside a panel (native bars can't be styled in Firefox).
@@ -671,7 +755,10 @@ const scrollUpdaters = [...document.querySelectorAll('.panel .scroll')].map(pixe
 $('craft-list').addEventListener('pointerdown', (e) => {
   const btn = e.target.closest('button[data-recipe]');
   if (!btn || btn.disabled || e.button !== 0) return;
-  send({ t: 'craft', id: btn.dataset.recipe });
+  const r = RECIPES.find((x) => x.id === btn.dataset.recipe);
+  let times = 1;
+  if (e.shiftKey) times = Math.min(10, ...Object.entries(r.in).map(([i, n]) => Math.floor(countItem(st.inv, i) / n)));
+  for (let k = 0; k < times; k++) send({ t: 'craft', id: btn.dataset.recipe });
   audio.play('craft', { vol: 0.5 });
 });
 
@@ -899,7 +986,7 @@ function updateHUD(dt) {
   else if (dead.length && !me.dead) { rp.hidden = false; rp.textContent = `${dead.map((p) => p.name).join(', ')} ${dead.length > 1 ? 'are' : 'is'} waiting in the fire...`; }
   else rp.hidden = true;
 
-  if ((craftRefresh += dt) > 0.5 && !$('craft-panel').hidden) { craftRefresh = 0; renderCraft(); }
+  if ((craftRefresh += dt) > 0.5 && invOpen()) { craftRefresh = 0; renderCraft(); }
 }
 
 // Placed torches burn down locally between server updates (which only arrive every few seconds),

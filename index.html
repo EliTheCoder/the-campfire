@@ -27,15 +27,32 @@
     <div id="log"></div>
     <input id="chat" maxlength="200" placeholder="say something..." hidden />
     <div id="tooltip" hidden></div>
-    <div id="hint-keys">[Tab] Inventory · [<kbd data-key="craft"></kbd>] Craft · [<kbd data-key="help"></kbd>] Wiki · [Esc] Menu</div>
+    <div id="hint-keys">[Tab] Inventory &amp; crafting · [<kbd data-key="help"></kbd>] Wiki · [Esc] Menu</div>
   </div>
 
   <!-- Panels live outside the HUD so the main menu can open them too. -->
   <div id="inv-panel" class="panel" hidden>
-    <h2>Inventory</h2>
-    <div id="inv-grid"></div>
-    <p class="small dim">Click two slots to swap. The first row is your hotbar. [<kbd data-key="drop"></kbd>] drops one of the selected item, Shift+[<kbd data-key="drop"></kbd>] the whole stack.</p>
+    <div class="inv-wrap">
+      <section class="inv-side">
+        <h2>Inventory</h2>
+        <div id="inv-grid" class="slots"></div>
+        <div class="inv-label">Hotbar</div>
+        <div id="inv-hotbar" class="slots"></div>
+        <ul class="inv-help small">
+          <li><b>Drag</b> or <b>click</b> a stack to move it</li>
+          <li><b>Right-click</b>: take half · place one</li>
+          <li><b>Shift-click</b>: hotbar &harr; bag</li>
+          <li><b>1-8</b> over a slot: swap with hotbar</li>
+          <li><b>Click outside</b> while holding: throw it</li>
+        </ul>
+      </section>
+      <section class="craft-side">
+        <h2>Crafting <span id="craft-station"></span></h2>
+        <div id="craft-list" class="scroll"></div>
+      </section>
+    </div>
   </div>
+  <div id="cursor-stack" hidden><img /><span class="n"></span></div>
   <div id="menu-panel" class="panel" hidden>
     <h2>Menu</h2>
     <div class="menu-buttons">
@@ -47,10 +64,6 @@
       <p class="small dim" id="m-giveup-note">Respawn at the fire. You drop everything where you stand.</p>
       <button id="m-leave" class="alt">Leave to main menu</button>
     </div>
-  </div>
-  <div id="craft-panel" class="panel" hidden>
-    <h2>Crafting</h2>
-    <div id="craft-list" class="scroll"></div>
   </div>
 
   <div id="settings-panel" class="panel" hidden>
