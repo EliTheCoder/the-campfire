@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { WebSocketServer } from 'ws';
 import readline from 'node:readline';
+import fs from 'node:fs';
+import path from 'node:path';
 import { Game } from './game.js';
 import { DEFAULT_PORT, TICK_RATE } from '../shared/constants.js';
 import { ITEMS } from '../shared/defs.js';
@@ -10,6 +12,8 @@ const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
 const port = Number(opt('port', process.env.PORT || DEFAULT_PORT));
 const seedArg = opt('seed');
+const savePath = path.resolve(opt('save', 'saves/world.json'));
+const SAVE_EVERY = 30; // seconds
 
 const log = (...a) => console.log('\x1b[33m[campfire]\x1b[0m', ...a);
 const wss = new WebSocketServer({ port });
@@ -20,6 +24,37 @@ const broadcast = (obj) => {
   for (const p of game.players.values()) if (p.ws.readyState === 1) p.ws.send(data);
 };
 const game = new Game({ cheats: args.includes('--cheats'), seed: seedArg != null ? Number(seedArg) : undefined, send, broadcast, log });
+
+// ---------- save file ----------
+function save(why = '') {
+  try {
+    fs.mkdirSync(path.dirname(savePath), { recursive: true });
+    const tmp = savePath + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(game.serialize()));
+    fs.renameSync(tmp, savePath); // atomic: a crash mid-write never corrupts the save
+    if (why) log(`saved ${path.relative(process.cwd(), savePath)}${why ? ' (' + why + ')' : ''}`);
+  } catch (e) { log('SAVE FAILED:', e.message); }
+}
+// Starting a new world keeps the old one as a timestamped backup.
+function backupSave() {
+  if (!fs.existsSync(savePath)) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dest = savePath.replace(/\.json$/, `-${stamp}.json`);
+  fs.copyFileSync(savePath, dest);
+  log(`previous world backed up to ${path.relative(process.cwd(), dest)}`);
+}
+if (fs.existsSync(savePath) && !args.includes('--new')) {
+  try {
+    game.load(JSON.parse(fs.readFileSync(savePath, 'utf8')));
+    log(`loaded ${path.relative(process.cwd(), savePath)} (seed ${game.seed}, ${Math.floor(game.world.time / 60)}m in, ${game.offline.size} players)`);
+  } catch (e) {
+    log('could not load save:', e.message, '- starting a new world');
+  }
+} else if (args.includes('--new')) backupSave();
+game.onReset = () => { backupSave(); save('new world'); };
+save();
+setInterval(() => { if (game.players.size) save(); }, SAVE_EVERY * 1000);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { save('shutdown'); process.exit(0); });
 
 wss.on('connection', (ws, req) => {
   let player = null;
@@ -47,10 +82,10 @@ log(`Listening on ws://0.0.0.0:${port}  (seed ${game.seed}). Type "help" for com
 
 const findPlayer = (name) => [...game.players.values()].find((p) => p.name.toLowerCase() === String(name).toLowerCase());
 const commands = {
-  help: () => log('commands: status | players | say <msg> | restart [seed] | fuel <n> | weather rain|wind|clear | give <player> <item> [n] | kill <player> | revive <player> | time <minutes> | items | quit'),
+  help: () => log('commands: status | players | save | say <msg> | restart [seed] | fuel <n> | weather rain|wind|clear | give <player> <item> [n] | kill <player> | revive <player> | time <minutes> | items | quit'),
   status: () => {
     const f = game.world.fire;
-    log(`time ${Math.floor(game.world.time / 60)}m${Math.floor(game.world.time % 60)}s | fuel ${f.fuel.toFixed(1)} | burn ${f.burn.toFixed(2)}/s | temp ${f.temp.toFixed(2)} | demand ${f.demand} | weather ${game.weather.s} (${game.weather.t.toFixed(0)}s) | buildings ${game.world.bld.size} | packets ${game.packets.length} | ${game.over ? 'GAME OVER' : 'running'}`);
+    log(`${game.players.size ? 'running' : 'PAUSED (nobody online)'} | time ${Math.floor(game.world.time / 60)}m${Math.floor(game.world.time % 60)}s | fuel ${f.fuel.toFixed(1)} | burn ${f.burn.toFixed(2)}/s | temp ${f.temp.toFixed(2)} | demand ${f.demand} | weather ${game.weather.s} (${game.weather.t.toFixed(0)}s) | buildings ${game.world.bld.size} | packets ${game.packets.length} | ${game.over ? 'GAME OVER' : 'running'}`);
   },
   players: () => {
     if (!game.players.size) return log('no players');
@@ -76,7 +111,8 @@ const commands = {
   revive: (name) => { const p = findPlayer(name); if (p?.dead) game.revive(p); },
   time: (m) => { game.world.time = Number(m) * 60; log(`time set to ${m} minutes`); },
   items: () => log(Object.keys(ITEMS).join(', ')),
-  quit: () => process.exit(0),
+  save: () => save('manual'),
+  quit: () => { save('shutdown'); process.exit(0); },
 };
 
 const rl = readline.createInterface({ input: process.stdin });

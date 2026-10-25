@@ -15,8 +15,11 @@ Open http://localhost:5173. Friends connect to `ws://<your-ip>:7777` (forward TC
 
 Server only: `npm run server -- --port 7777 --seed 123` (add `--cheats` for chat commands).
 
+### Saves
+The world autosaves every 30s (while anyone is online) and on shutdown to `saves/world.json`, and loads it on startup, so updates/restarts keep the world. Starting a new world (`restart`, the in-game "Light a new fire", or `--new`) backs the old save up as `saves/world-<timestamp>.json`. Use `--save <path>` for a different file. The world is paused while nobody is connected.
+
 ### Server console commands
-`status`, `players`, `say <msg>`, `restart [seed]`, `fuel <n>`, `weather rain|wind|clear`, `give <player> <item> [n]`, `kill <player>`, `revive <player>`, `time <minutes>`, `items`, `quit`
+`status`, `players`, `save`, `say <msg>`, `restart [seed]`, `fuel <n>`, `weather rain|wind|clear`, `give <player> <item> [n]`, `kill <player>`, `revive <player>`, `time <minutes>`, `items`, `quit`
 
 ### Cheat chat commands (`--cheats` only)
 `/give item n`, `/weather rain|wind|clear`, `/fuel n`, `/time min`, `/tp x y`, `/ruin [eternal]`

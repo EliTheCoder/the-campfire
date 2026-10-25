@@ -72,6 +72,45 @@ export class Game {
     this.offline.clear();
     for (const p of this.players.values()) { this.resetPlayer(p); this.welcome(p); }
     this.log?.(`World reset. Seed ${this.seed}`);
+    this.onReset?.();
+  }
+
+  // ---------- saving ----------
+  // Everything needed to resume a world. Generated terrain comes back from the seed; only
+  // changes to it (feature overrides), buildings, drops and players are stored.
+  serialize() {
+    const w = this.world;
+    const pl = (p) => ({
+      id: p.id, token: p.token, name: p.name, color: p.color, x: p.x, y: p.y, inv: p.inv,
+      dead: p.dead, burn: p.burn, lit: p.lit, cold: p.cold, face: p.face,
+    });
+    return {
+      version: 1, savedAt: new Date().toISOString(),
+      seed: this.seed, time: w.time, fire: w.fire, over: this.over,
+      weather: this.weather, known: [...this.known], nextId: this.nextId,
+      feat: [...w.feat], bld: [...w.bld], drops: [...w.drops],
+      players: [...this.players.values(), ...this.offline.values()].filter((p) => p.token).map(pl),
+    };
+  }
+
+  load(d) {
+    this.reset(d.seed);
+    const w = this.world;
+    w.time = d.time;
+    Object.assign(w.fire, d.fire);
+    this.over = !!d.over;
+    this.weather = d.weather ?? this.weather;
+    this.known = new Set(d.known);
+    this.nextId = Math.max(this.nextId, d.nextId ?? 1);
+    for (const [k, v] of d.feat) w.feat.set(k, v);
+    for (const [k, v] of d.bld) w.bld.set(k, v);
+    for (const [k, v] of d.drops) w.drops.set(k, v);
+    w.lightDirty = w.rootDirty = w.stageDirty = true;
+    // everyone comes back as "offline" and is restored when their browser reconnects
+    for (const p of d.players ?? []) {
+      this.offline.set(p.token, { ...p, held: 0, moving: false, invDirty: true, ws: null });
+      this.nextId = Math.max(this.nextId, p.id + 1);
+    }
   }
 
   // ---------- players ----------
@@ -564,6 +603,8 @@ export class Game {
 
   // ---------- simulation ----------
   tick(dt) {
+    // Nobody at the fire: the world holds its breath (no burning, no growth, no weather).
+    if (!this.players.size) return;
     if (!this.over) {
       const w = this.world;
       w.time += dt;
