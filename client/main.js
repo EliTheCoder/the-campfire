@@ -251,6 +251,12 @@ for (const cv of [$('gl'), $('lo')]) {
     if (e.button === 1) e.preventDefault(); // no autoscroll / paste on middle click
     if (!st.world || st.me.dead) return;
     if (e.button === 1) { pickBlock(); return; }
+    // Holding ember roots: press and drag (either button) to lay a line of them.
+    if ((e.button === 0 || e.button === 2) && st.inv[st.sel]?.item === 'ember_root' && st.hover) {
+      st.rootDrag = { x: st.hover.x, y: st.hover.y };
+      send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: false });
+      return;
+    }
     if (e.button === 0) mouse.l = true;
     if (e.button === 2 && st.hover) send({ t: 'click', x: st.hover.x, y: st.hover.y, slot: st.sel, shift: e.shiftKey || e.ctrlKey });
   });
@@ -274,16 +280,12 @@ function pickBlock() {
   renderInv();
   audio.play('tick', { vol: 0.4 });
 }
-addEventListener('mouseup', (e) => { if (e.button === 0) { mouse.l = false; st.harvest = null; } });
+addEventListener('mouseup', (e) => { st.rootDrag = null; if (e.button === 0) { mouse.l = false; st.harvest = null; } });
 
 // ---------------- movement (client-predicted) ----------------
+// The dark isn't a wall: you can walk into it, but without a lit torch the cold starts killing you.
 function walkable(w, tx, ty) {
-  if (w.isSolid(tx, ty)) return 'solid';
-  if (w.sharedLit(tx, ty)) return true;
-  const mx = Math.floor(st.me.x), my = Math.floor(st.me.y);
-  if (st.me.held > 0 && countItem(st.inv, 'torch') > 0 && Math.max(Math.abs(tx - mx), Math.abs(ty - my)) <= TORCH.heldRadius) return true;
-  if (st.me.freezing) return true; // stumbling blindly toward safety
-  return 'dark';
+  return w.isSolid(tx, ty) ? 'solid' : true;
 }
 function canOccupy(w, x, y) {
   const me = st.me;
@@ -296,7 +298,7 @@ function canOccupy(w, x, y) {
   }
   return true;
 }
-let lastDarkMsg = 0, stepAcc = 0;
+let stepAcc = 0, lastDir = '';
 function move(dt) {
   const w = st.world, me = st.me;
   me.freezing = !me.dead && !w.sharedLit(Math.floor(me.x), Math.floor(me.y)) && (me.held <= 0 || !countItem(st.inv, 'torch'));
@@ -308,26 +310,22 @@ function move(dt) {
   if (keys.has(BINDS.up) || keys.has('ArrowUp')) dy--;
   if (keys.has(BINDS.down) || keys.has('ArrowDown')) dy++;
   me.m = !!(dx || dy);
-  if (!me.m) return;
+  if (!me.m) { lastDir = ''; return; }
   const len = Math.hypot(dx, dy);
-  const sp = PLAYER_SPEED * (me.freezing ? 0.55 : 1) * dt;
+  const sp = PLAYER_SPEED * (me.freezing ? 0.75 : 1) * dt;
   if (dx) me.f = dx;
-  let blockedDark = false;
+  // When the direction changes, snap to the pixel grid. Moving diagonally, both axes then cross
+  // pixel boundaries on the same frame, so the view steps diagonally instead of in a staircase.
+  const dir = dx + ',' + dy;
+  if (dir !== lastDir) { me.x = Math.round(me.x * 16) / 16; me.y = Math.round(me.y * 16) / 16; lastDir = dir; }
   const nx = me.x + (dx / len) * sp;
-  const rx = canOccupy(w, nx, me.y);
-  if (rx === true) me.x = nx; else if (rx === 'dark') blockedDark = true;
+  if (canOccupy(w, nx, me.y) === true) me.x = nx;
   const ny = me.y + (dy / len) * sp;
-  const ry = canOccupy(w, me.x, ny);
-  if (ry === true) me.y = ny; else if (ry === 'dark') blockedDark = true;
+  if (canOccupy(w, me.x, ny) === true) me.y = ny;
   stepAcc += sp;
   if (stepAcc > 0.85) {
     stepAcc = 0;
     audio.play(w.ground(Math.floor(me.x), Math.floor(me.y)) === 'floor' ? 'step_stone' : 'step_grass', { vol: me.freezing ? 0.25 : 0.35, rate: me.freezing ? 0.8 : 1 });
-  }
-  if (blockedDark && performance.now() - lastDarkMsg > 2500) {
-    lastDarkMsg = performance.now();
-    audio.play('bump', { vol: 0.5, rate: 0.7 });
-    R.float(countItem(st.inv, 'torch') ? 'Too dark...' : 'Too dark - you need a torch', me.x, me.y - 1, '#bcd4ff');
   }
 }
 
@@ -350,6 +348,20 @@ function updateHover(dt) {
   const w = st.world;
   const [tx, ty] = R.toTile(mouse.x, mouse.y);
   st.hover = { x: tx, y: ty };
+  // Root dragging: fill every tile between the last one and the cursor, 4-connected so the
+  // line is continuous (roots only join up/down/left/right).
+  const drag = st.rootDrag;
+  if (drag && (drag.x !== tx || drag.y !== ty)) {
+    if (st.inv[st.sel]?.item !== 'ember_root') st.rootDrag = null;
+    else {
+      let { x, y } = drag;
+      while (x !== tx || y !== ty) {
+        if (Math.abs(tx - x) >= Math.abs(ty - y)) x += Math.sign(tx - x); else y += Math.sign(ty - y);
+        send({ t: 'click', x, y, slot: st.sel, shift: false });
+      }
+      st.rootDrag = { x: tx, y: ty };
+    }
+  }
   const inReach = Math.hypot(tx + 0.5 - st.me.x, ty + 0.5 - st.me.y) <= REACH + 0.75;
   if (mouse.l && inReach && !st.me.dead && !st.uiBlocking) {
     const time = harvestTime(w, tx, ty);
@@ -458,7 +470,7 @@ function featureHint(w, f, x, y) {
     case 'chest': return '<br>RMB: open';
     case 'eternal': {
       const store = Object.entries(f.store || {}).filter(([, n]) => n > 0);
-      return '<br>It never goes out.' + (store.length ? '<br>' + TEAL(`Cache: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}`) + '<br>RMB: collect it all' : '<br>' + DIM('Ember roots touching it grow teal. Machines on teal roots send their output here.'));
+      return '<br>It never goes out.' + (store.length ? '<br>' + TEAL(`Cache: ${store.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}`) + '<br>RMB: collect it all' : '<br>' + DIM('Ember roots touching it grow teal. Buildings on teal roots send their output here.'));
     }
     case 'brazier': return '<br>' + DIM('Cold and dead.');
     case 'dead_fire': return '<br>' + DIM('Someone else\'s fire. It went out.') + '<br>Hold LMB: sift the ashes';
@@ -521,7 +533,7 @@ function buildingInfo(w, b, x, y) {
     case 'crate': {
       const e = Object.entries(b.store || {}).filter(([, n]) => n > 0);
       const total = e.reduce((a, [, n]) => a + n, 0);
-      return (e.length ? `Holding ${total}/400: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}` : DIM('Empty')) + '<br>' + DIM('Machines beside it store their output here instead of the roots.') + '<br>' + DIM('RMB: take all · RMB with items: store them');
+      return (e.length ? `Holding ${total}/400: ${e.map(([i, n]) => `${n} ${ITEMS[i].name}`).join(', ')}` : DIM('Empty')) + '<br>' + DIM('Buildings beside it store their output here instead of the roots.') + '<br>' + DIM('RMB: take all · RMB with items: store them');
     }
   }
   const m = MULTIBLOCKS[b.t];
@@ -775,7 +787,8 @@ function updateHUD(dt) {
   fill.style.boxShadow = `0 0 12px ${pal[1]}`;
   const left = f.burn > 0 ? f.fuel / f.burn : 0;
   $('fuel-text').textContent = `${Math.ceil(f.fuel)} / ${w.maxFuel()}  ·  ~${fmtTime(left)} left`;
-  $('fire-burn').textContent = `Burning ${f.burn.toFixed(2)}/s`;
+  const crowd = st.players.size;
+  $('fire-burn').textContent = `Burning ${f.burn.toFixed(2)}/s${crowd > 1 ? ` · ${crowd} at the fire` : ''}`;
   const needed = FUEL_NAMES[f.demand];
   const de = $('fire-demand');
   de.textContent = f.demand > 0 ? `Hungry for ${needed}+` : 'Anything burns';

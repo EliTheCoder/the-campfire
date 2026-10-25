@@ -371,6 +371,12 @@ export function makeSprites() {
     shard(5, 14, 7, '#c83a1a', '#ff8a4a'); shard(11, 14, 6, '#c83a1a', '#ff8a4a'); shard(8, 14, 11, '#ff6a3a', '#ffb070');
     g.r(3, 14, 10, 1, '#5a1a10'); g.p(8, 6, '#fff6e8'); g.p(7, 9, '#ffe0c0');
   });
+  icon('flare', (g) => {
+    g.r(6, 5, 4, 9, '#c83a2a'); g.r(6, 5, 1, 9, '#e8604a'); g.r(9, 5, 1, 9, '#8a2418');
+    g.r(6, 8, 4, 1, '#f0e0c0'); g.r(6, 11, 4, 1, '#f0e0c0');
+    g.r(7, 2, 2, 3, '#8a8892'); g.p(7, 1, '#ffd27a'); g.p(8, 0, '#fff6d8');
+    g.r(6, 14, 4, 1, '#5a1a10');
+  });
   icon('pickaxe', (g) => {
     for (let i = 0; i < 11; i++) { g.p(3 + i, 14 - i, '#8a6440'); g.p(4 + i, 14 - i, '#5a3d26'); }
     for (const [x, y] of [[5, 3], [6, 2], [7, 2], [8, 2], [9, 3], [10, 4], [11, 5], [12, 6], [13, 8], [4, 4]]) { g.p(x, y, '#9a98a3'); g.p(x, y + 1, '#5a5862'); }
@@ -534,6 +540,67 @@ export function makeSprites() {
   });
   S.feat.glowmoss = S.icon.glowmoss;
 
+  // ---------- fire stages: the campfire's rings fuse into one pit ----------
+  // firePit[stage] is drawn with its top-left at (-r*16, -r*16) relative to the fire tile.
+  const ringStones = (g, cx, cy, R, n, size, cols, rnd) => {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.2;
+      const sx = cx + Math.cos(a) * R, sy = cy + Math.sin(a) * R * 0.92;
+      for (let y = -size; y <= size; y++) for (let x = -size - 1; x <= size + 1; x++) {
+        const d = (x / (size + 1)) ** 2 + (y / size) ** 2;
+        if (d > 1) continue;
+        g.p(sx + x, sy + y, d > 0.7 ? cols[3] : y < -size / 3 ? cols[0] : y > size / 3 ? cols[2] : rnd() < 0.15 ? cols[0] : cols[1]);
+      }
+    }
+  };
+  const disc = (g, cx, cy, R, colFn) => { for (let y = -R; y <= R; y++) for (let x = -R; x <= R; x++) { const d = Math.hypot(x, y * 1.08); if (d <= R) { const c = colFn(d / R, x, y); if (c) g.p(cx + x, cy + y, c); } } };
+  const STONE = ['#a8a2b0', '#7e7886', '#5e5866', '#2e2a34'];
+  const FB = ['#e8a060', '#c8783a', '#9a5228', '#3a2014'];
+  S.firePit = [null];
+  S.firePit[1] = mk(48, 48, (g) => {
+    const rnd = mulberry32(401);
+    disc(g, 24, 25, 15, (d) => (d > 0.85 ? '#2a1c16' : rnd() < 0.08 ? '#4a3a32' : '#1a1210'));
+    // a big log teepee
+    for (const [x0, y0, x1, y1] of [[14, 34, 30, 16], [34, 34, 18, 16], [24, 36, 24, 14], [12, 28, 36, 26]]) {
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n; g.r(x - 1, y - 1, 3, 3, i % 5 ? '#5a3a22' : '#3a2414'); g.p(x - 1, y - 1, '#7a5432'); }
+    }
+    ringStones(g, 24, 25, 18, 10, 4, STONE, rnd);
+  });
+  S.firePit[2] = mk(80, 80, (g) => {
+    const rnd = mulberry32(402);
+    // outer fire-brick wall
+    disc(g, 40, 41, 36, (d, x, y) => {
+      if (d < 0.78) return null;
+      const ang = Math.atan2(y, x), course = Math.floor(d * 36 / 3);
+      const joint = Math.floor((ang + Math.PI) / (Math.PI * 2) * (40 + course * 2) + course * 0.5) % 1 === 0 && ((ang * 57) | 0) % 9 === 0;
+      return d > 0.97 ? FB[3] : d < 0.81 ? FB[3] : joint ? FB[3] : d > 0.92 ? FB[0] : rnd() < 0.1 ? FB[2] : FB[1];
+    });
+    disc(g, 40, 41, 28, (d) => (d > 0.9 ? '#2a1610' : rnd() < 0.1 ? '#3a2018' : '#160e0c'));
+    ringStones(g, 40, 41, 24, 12, 3, STONE, rnd);
+    for (let i = 0; i < 6; i++) { const a = i * 1.05, r = 6 + (i % 3) * 3; g.r(40 + Math.cos(a) * r - 3, 41 + Math.sin(a) * r - 1, 7, 3, i % 2 ? '#3a2414' : '#5a3a22'); }
+  });
+  S.firePit[3] = mk(112, 112, (g) => {
+    const rnd = mulberry32(403);
+    // octagonal ember-stone dais
+    for (let y = 0; y < 112; y++) for (let x = 0; x < 112; x++) {
+      const dx = Math.abs(x - 56), dy = Math.abs(y - 57);
+      const oct = Math.max(dx, dy, (dx + dy) * 0.72);
+      if (oct > 54) continue;
+      const edge = oct > 51;
+      g.p(x, y, edge ? '#140e12' : oct > 47 ? (y < 57 ? '#4a3e46' : '#2a2228') : rnd() < 0.06 ? '#3a3038' : rnd() < 0.5 ? '#2e262c' : '#282026');
+    }
+    // inner blaze ring and hearth stones
+    disc(g, 56, 57, 40, (d) => (d < 0.82 ? null : d > 0.96 ? FB[3] : d > 0.9 ? FB[0] : FB[1]));
+    disc(g, 56, 57, 32, (d) => (d > 0.9 ? '#2a1610' : rnd() < 0.1 ? '#3a2018' : '#120a0a'));
+    ringStones(g, 56, 57, 27, 12, 3, STONE, rnd);
+    // corner pillars (their braziers burn at runtime)
+    for (const [px, py] of [[16, 17], [96, 17], [16, 97], [96, 97]]) {
+      g.r(px - 6, py - 4, 12, 12, '#3a3038'); g.r(px - 6, py - 4, 12, 2, '#5a4e56'); g.r(px - 6, py + 7, 12, 1, '#120c10');
+      g.r(px - 7, py - 6, 14, 3, '#4a3e46'); g.r(px - 5, py - 6, 10, 1, '#1a1214');
+    }
+  });
+
   // ---------- progression: formed multiblocks (drawn over their whole footprint) ----------
   // Each: [sprite, width, height, offsetX, offsetY] relative to the footprint's top-left tile.
   S.formed = {};
@@ -618,12 +685,20 @@ export function drawFlame(ctx, cx, baseY, width, height, pal, t, seed = 0) {
     const nx = i / (half + 0.5);
     const wob = 0.72 + 0.28 * Math.sin(t * 9 + i * 1.9 + seed) * Math.sin(t * 5.3 + i * 0.7 + seed * 2);
     const h = Math.max(1, height * (1 - nx * nx) * wob);
-    for (let y = 0; y < h; y++) {
-      const f = y / h;
-      const edge = Math.abs(nx) + f * 0.6;
-      const col = edge < 0.35 && f < 0.55 ? pal[0] : edge < 0.65 ? pal[1] : f < 0.85 ? pal[2] : pal[3];
-      ctx.fillStyle = col;
-      ctx.fillRect(Math.round(cx + i), Math.round(baseY - y), 1, 1);
+    // one rect per run of same-coloured pixels (big flames would otherwise be thousands of 1px rects)
+    const X = Math.round(cx + i);
+    let runStart = 0, runCol = null;
+    for (let y = 0; y <= h; y++) {
+      let col = null;
+      if (y < h) {
+        const f = y / h;
+        const edge = Math.abs(nx) + f * 0.6;
+        col = edge < 0.35 && f < 0.55 ? pal[0] : edge < 0.65 ? pal[1] : f < 0.85 ? pal[2] : pal[3];
+      }
+      if (col !== runCol) {
+        if (runCol) { ctx.fillStyle = runCol; ctx.fillRect(X, Math.round(baseY - y + 1), 1, y - runStart); }
+        runStart = y; runCol = col;
+      }
     }
   }
   // flickering tongues

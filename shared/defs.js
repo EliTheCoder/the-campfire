@@ -32,11 +32,12 @@ export const ITEMS = {
   seed: { name: 'Kindling Seed', place: 'kindling', desc: 'Plant in light. Grows leaves forever.' },
   sapling: { name: 'Sapling', place: 'sapling', desc: 'Plant in light. Grows into a grove tree that sheds sticks and logs.' },
   torch: { name: 'Torch', place: 'torch', desc: 'Carried: lights your way (3x3, only you). Placed: lights 5x5 for everyone.' },
+  flare: { name: 'Flare', use: 'flare', desc: 'Right-click to fire it into the sky. Everyone sees where it came from - use it when you are lost, or to call friends.' },
   axe: { name: 'Stone Axe', stack: 1, desc: 'Chop trees into logs. Works from your inventory.' },
   pickaxe: { name: 'Pickaxe', stack: 1, desc: 'Mine rock, cave walls, coal seams and geodes. Works from your inventory.' },
   workbench: { name: 'Workbench', place: 'workbench', desc: 'Stand near it to craft advanced recipes.' },
-  crate: { name: 'Crate', place: 'crate', desc: 'Machines beside it store their output here instead of sending it down the roots. RMB to take, RMB with items to store.' },
-  ember_root: { name: 'Ember Root', place: 'root', desc: 'Carries heat from the campfire (orange) or an eternal flame (teal) to torches and machines, and carries fuel back.' },
+  crate: { name: 'Crate', place: 'crate', desc: 'Buildings beside it store their output here instead of sending it down the roots. RMB to take, RMB with items to store.' },
+  ember_root: { name: 'Ember Root', place: 'root', desc: 'Carries heat from the campfire (orange) or an eternal flame (teal) to torches and buildings, and carries fuel back.' },
   rot_pit: { name: 'Rot Pit', place: 'rot_pit', desc: 'Turns 4 leaves into 1 peat over time. Faster in rain.' },
   resin_tap: { name: 'Resin Tap', place: 'resin_tap', desc: 'Place beside a grown grove tree or heart tree. Drips resin.' },
   glowmoss: { name: 'Glowmoss', place: 'glowmoss', desc: 'Gives off a faint 3x3 light. Found in ancient groves.' },
@@ -117,7 +118,7 @@ export const FIRE_STAGES = [
 ];
 export const RING_BLOCKS = new Set(FIRE_STAGES.filter((s) => s.block).map((s) => s.block));
 
-// Plants and machines hand their output straight to a neighbouring machine that takes it.
+// Plants and buildings hand their output straight to a neighbouring building that takes it.
 export const FEEDS = { kindling: 'rot_pit', sapling: 'kiln', rot_pit: 'press', press: 'coal_bed', coal_bed: 'forge_core' };
 
 export const FEATURES = {
@@ -156,6 +157,7 @@ export const FEATURES = {
 export const RECIPES = [
   { id: 'torch', out: ['torch', 2], in: { stick: 1, leaf: 2 } },
   { id: 'retorch', out: ['torch', 1], in: { charred_stick: 1, leaf: 1 } },
+  { id: 'flare', out: ['flare', 2], in: { stick: 1, leaf: 2, stone: 1 } },
   { id: 'axe', out: ['axe', 1], in: { stick: 3, stone: 2 } },
   { id: 'workbench', out: ['workbench', 1], in: { stick: 6, stone: 4 } },
   { id: 'ember_root', out: ['ember_root', 4], in: { log: 1, leaf: 2 }, station: 'workbench' },

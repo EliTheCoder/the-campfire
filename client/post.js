@@ -85,7 +85,7 @@ void main() {
     col = mix(col, vec3(dot(col, vec3(0.33))), u_cold * 0.5);
   }
   if (u_dead > 0.0) col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * vec3(0.7, 0.75, 0.95), u_dead);
-  col += vec3(1.0, 0.7, 0.4) * u_flash;
+  col += vec3(1.0, 0.7, 0.4) * u_flash * q;
 
   if (u_pal > 0.5) {
     vec3 cc = col + (dith - 0.5) * 0.06;

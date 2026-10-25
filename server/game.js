@@ -449,10 +449,17 @@ export class Game {
   }
 
   click(p, x, y, slot, shift) {
-    if (!this.inReach(p, x, y)) return;
     const w = this.world;
     const s = p.inv[slot];
     const it = s && ITEMS[s.item];
+    // Flares fire straight up wherever you aim; everyone sees where they came from.
+    if (it?.use === 'flare' && !p.dead) {
+      removeItem(p.inv, 'flare', 1); p.invDirty = true;
+      this.fx.push(['flare', r2(p.x), r2(p.y), p.name, p.color]);
+      this.say(`${p.name} fired a flare!`, p.color);
+      return;
+    }
+    if (!this.inReach(p, x, y)) return;
 
     if (it?.learn) {
       if (!this.known.has(it.learn)) {
@@ -615,7 +622,8 @@ export class Game {
       f.demand = Math.min(FIRE.maxDemand, Math.floor(min / FIRE.demandEveryMin));
       f.temp += (Math.min(1, f.temp) - f.temp) * dt * 0.004;
       // It never stops getting hungrier: linear growth times a slow exponential.
-      const base = FIRE.baseBurn * (1 + min * FIRE.hungerPerMin) * Math.pow(FIRE.hungerGrowth, min)
+      const crowd = 1 + FIRE.perExtraPlayer * (this.players.size - 1); // more mouths, more hunger
+      const base = FIRE.baseBurn * crowd * (1 + min * FIRE.hungerPerMin) * Math.pow(FIRE.hungerGrowth, min)
         * (rain ? FIRE.rainMult : 1) * (f.temp >= f.demand + 1 ? FIRE.hotBonus : 1);
 
       this.tickPlayers(dt, rain);
@@ -718,7 +726,7 @@ export class Game {
     } else this.autoRevive = 0;
   }
 
-  // Hand an item onward: a neighbouring machine that takes it, else straight into a flame it
+  // Hand an item onward: a neighbouring building that takes it, else straight into a flame it
   // touches, else down the best powered root (orange roots only carry fuel to the fire; teal
   // roots carry anything to their eternal flame's cache).
   deliver(x, y, b, item) {

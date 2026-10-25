@@ -185,7 +185,7 @@ export function makeGen(seed) {
     const g = s?.grounds.get(K(x, y));
     if (g) return g;
     const cheb = Math.max(Math.abs(x), Math.abs(y));
-    if (cheb > 6 && !s && fbm(seed + 1, x, y, 20) > 0.68) return 'water';
+    if (cheb > 6 && !s && fbm(seed + 1, x, y, 20) > 0.74) return 'water';
     const n = fbm(seed + 2, x, y, 10);
     return n > 0.6 ? 'dirt' : n < 0.35 ? 'dark' : 'grass';
   }

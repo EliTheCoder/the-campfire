@@ -17,6 +17,7 @@ export const FIRE = {
   reviveCost: 120,
   rainMult: 1.5,
   hotBonus: 0.85, // burn multiplier when temperature exceeds demand
+  perExtraPlayer: 0.6, // +60% burn for each player online beyond the first
 };
 
 export const ETERNAL_ROOT_REACH = 40; // eternal flames never weaken

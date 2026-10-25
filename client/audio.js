@@ -123,6 +123,11 @@ export function createAudio() {
     learn: () => { [392, 494, 587, 784].forEach((f, i) => tone({ freq: f, dur: 0.9, type: 'triangle', vol: 0.08, delay: i * 0.12 })); },
     thunder: () => { burst({ type: 'lowpass', f0: 300, f1: 40, dur: 3, vol: 0.5, attack: 0.3 }); burst({ type: 'lowpass', f0: 1200, f1: 100, dur: 0.6, vol: 0.25, attack: 0.01 }); },
     gust: () => burst({ type: 'bandpass', f0: 200, f1: 900, q: 0.8, dur: 2.2, vol: 0.4, attack: 0.8 }),
+    // heard by everyone, wherever they are: a rising hiss, then a pop
+    flare: () => {
+      burst({ type: 'bandpass', f0: 600, f1: 4000, q: 1.5, dur: 0.9, vol: 0.25, attack: 0.05 });
+      setTimeout(() => { burst({ type: 'lowpass', f0: 2000, f1: 200, dur: 0.6, vol: 0.5, attack: 0.005 }); [880, 1320, 1760].forEach((f, i) => tone({ freq: f, dur: 0.5, vol: 0.05, delay: i * 0.04 })); }, 900);
+    },
     forge: (o) => { burst({ ...o, type: 'bandpass', f0: 150, f1: 1800, q: 1, dur: 0.7, vol: 0.4, attack: 0.5 }); [196, 247, 294].forEach((f, i) => tone({ ...o, freq: f, dur: 1.4, type: 'triangle', vol: 0.07, delay: 0.65 + i * 0.04 })); },
     sparkle: (o) => [1568, 2093, 2637].forEach((f, i) => tone({ ...o, freq: f, dur: 0.35, type: 'sine', vol: 0.05, delay: i * 0.05 })),
   };
@@ -154,6 +159,7 @@ export function createAudio() {
       case 'death': synth.death({ x: a, y: b }); break;
       case 'revive': synth.revive(); break;
       case 'drop': A.play('drop', { ...at(a, b), vol: 0.5 }); break;
+      case 'flare': synth.flare(); break;
       case 'hop': A.play('pluck', { ...at(c, e[4]), vol: 0.2, rate: 1.4 }); break;
       case 'forge': synth.forge(at(a, b)); setTimeout(() => A.play('place', { ...at(a, b), vol: 1, rate: 0.6 }), 650); break;
       case 'shatter': A.play('break', { ...at(a, b), vol: 1, rate: 0.7 }); A.play('mine', { ...at(a, b), vol: 0.8 }); A.play('wood', { ...at(a, b), vol: 0.6, rate: 0.7 }); break;
@@ -174,8 +180,8 @@ export function createAudio() {
   function buildAmbience() {
     fire = loopNoise('lowpass', 500);
     fire.roar = loopNoise('bandpass', 140, 1.5);
-    rain = loopNoise('highpass', 700);
-    const rl = ctx.createBiquadFilter(); rl.type = 'lowpass'; rl.frequency.value = 6000;
+    rain = loopNoise('highpass', 300);
+    const rl = ctx.createBiquadFilter(); rl.type = 'lowpass'; rl.frequency.value = 1400; rl.Q.value = 0.5;
     rain.g.disconnect(); rain.g.connect(rl).connect(amb);
     wind = loopNoise('bandpass', 400, 1.8);
     // freezing: detuned low drone
@@ -220,7 +226,7 @@ export function createAudio() {
     }
     if (s.torchDist < 6 && Math.random() < s.dt * 2) burst({ dur: 0.02, f0: 3500, vol: 0.12 * (1 - s.torchDist / 6) });
     const rainOn = s.weather === 'rain' ? 1 : s.weather === 'rain_warn' ? 0.08 : 0;
-    set(rain.g.gain, 0.22 * rainOn, 1.2);
+    set(rain.g.gain, 0.11 * rainOn, 1.2);
     windPhase += s.dt;
     const windOn = s.weather === 'wind' ? 1 : s.weather === 'wind_warn' ? 0.35 : 0;
     set(wind.g.gain, 0.3 * windOn * (0.6 + 0.4 * Math.sin(windPhase * 0.7) * Math.sin(windPhase * 1.9)), 0.4);

@@ -240,7 +240,7 @@ export class World {
     return MULTIBLOCKS[b.t] ? this.mbOutlets(x, y, b.t) : N4.map(([dx, dy]) => [x + dx, y + dy, x, y]);
   }
 
-  // Plants and machines feeding a neighbouring machine. Returns [cx, cy, core, edgeX, edgeY, fromX, fromY].
+  // Plants and buildings feeding a neighbouring building. Returns [cx, cy, core, edgeX, edgeY, fromX, fromY].
   feedTargets(x, y, t) {
     const want = FEEDS[t];
     if (!want) return [];

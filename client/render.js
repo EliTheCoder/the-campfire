@@ -8,6 +8,14 @@ import { drawFlame, lerpPalette, ETERNAL_PALETTE, FLAME_PALETTES } from './sprit
 
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 const TORCH_PAL = FLAME_PALETTES[1];
+// Buildings a root visibly plugs into: ones that take heat or send output down roots.
+const ROOT_USERS = new Set(['torch', 'kindling', 'sapling', 'rot_pit', 'resin_tap', 'kiln', 'press', 'coal_bed', 'forge_core', 'watchfire', 'heart_seed']);
+function ROOT_LINKS(w, b, x, y) {
+  if (ROOT_USERS.has(b.t)) return true;
+  const c = w.mbCoreFor(x, y); // a wall block of a multiblock that uses heat or sends output
+  return !!(c && c[2] !== b && ROOT_USERS.has(c[2].t));
+}
+const FLARE_TIME = 25;
 const TEAL_PAL = ['#f0fff8', '#8af5d8', '#2ab8a8', '#16606a'];
 // light colours for natural lights, by the feature that makes them
 const SITE_LIGHT = { eternal: ['#8af5d8', 4.5, 0.7, 0.82], shrine: ['#ffd27a', 3.2, 0.5, 0.72], glowmoss: ['#6af0b0', 1.8, 0.28, 0.5], ancient_tree: ['#7af0a0', 3.5, 0.4, 0.55] };
@@ -29,7 +37,7 @@ export function createRenderer(glCanvas, overlay, S) {
   const lmx = lmc.getContext('2d', { willReadFrequently: true });
   let lmImg = null;
 
-  const R = { scale: 3, W: 0, H: 0, camX: 0, camY: 0, parts: [], hops: [], flash: 0, shake: 0, palette: false, floats: [], software: !!post?.software };
+  const R = { scale: 3, W: 0, H: 0, camX: 0, camY: 0, parts: [], hops: [], flares: [], flash: 0, shake: 0, palette: false, floats: [], software: !!post?.software };
   R.setLow = (v) => {
     R.low = !!v || !post;
     glCanvas.hidden = R.low; lo.hidden = !R.low;
@@ -79,8 +87,10 @@ export function createRenderer(glCanvas, overlay, S) {
     } else if (kind === 'death') {
       for (let i = 0; i < 40; i++) P({ x: a * 16, y: b * 16, vx: (Math.random() - 0.5) * 50, vy: -10 - Math.random() * 40, life: 1 + Math.random() * 1.5, col: Math.random() < 0.5 ? '#5a6aa8' : '#9ab8ff', emit: true, drag: 1.5 });
       R.shake = 0.4;
+    } else if (kind === 'flare') {
+      R.flares.push({ x: a, y: b, name: c, color: e[4], t: 0, burst: false });
     } else if (kind === 'hop') {
-      // an item arcing from a plant into the machine beside it
+      // an item arcing from a plant into the building beside it
       R.hops.push({ x0: a * 16 + 8, y0: b * 16 + 6, x1: c * 16 + 8, y1: e[4] * 16 + 8, item: e[5], t: 0 });
     } else if (kind === 'drop') {
       for (let i = 0; i < 5; i++) P({ x: a * 16 + 8 + (Math.random() - 0.5) * 8, y: b * 16 + 12, vx: (Math.random() - 0.5) * 30, vy: -10 - Math.random() * 15, g: 80, life: 0.35, col: '#8a7a60' });
@@ -132,9 +142,15 @@ export function createRenderer(glCanvas, overlay, S) {
     const pal = lerpPalette(w.fire.temp);
     const wind = st.weather.s === 'wind' ? 50 : 0;
     // fire embers + smoke
+    const sg = w.stage();
+    if (fuel > 0 && sg === 3 && Math.random() < dt * 20) {
+      // embers swirling up around the Inferno
+      const a = Math.random() * Math.PI * 2, r = 34 + Math.random() * 10;
+      P({ x: 8 + Math.cos(a) * r, y: 8 + Math.sin(a) * r * 0.6, vx: -Math.sin(a) * 40, vy: -30 - Math.random() * 30, drag: 0.4, life: 1.5 + Math.random(), col: pal[1 + ((Math.random() * 2) | 0)], emit: true, wobble: Math.random() * 9, wobbleAmt: 30 });
+    }
     if (fuel > 0) {
-      const rate = [3, 7, 12, 18, 28][stage];
-      for (let n = rate * dt; n > 0; n--) if (Math.random() < n) P({ x: 8 + (Math.random() - 0.5) * (6 + stage * 2), y: 6 - stage, vx: (Math.random() - 0.5) * 12 + wind * 0.5, vy: -20 - Math.random() * (20 + stage * 10), life: 0.8 + Math.random() * 1.8, col: pal[1 + ((Math.random() * 3) | 0) % 3], emit: true, wobble: Math.random() * 9, wobbleAmt: 40 });
+      const rate = [3, 7, 12, 18, 28][stage] * (1 + sg * 0.8);
+      for (let n = rate * dt; n > 0; n--) if (Math.random() < n) P({ x: 8 + (Math.random() - 0.5) * (6 + stage * 2 + sg * 14), y: 6 - stage - sg * 6, vx: (Math.random() - 0.5) * 12 + wind * 0.5, vy: -20 - Math.random() * (20 + stage * 10), life: 0.8 + Math.random() * 1.8, col: pal[1 + ((Math.random() * 3) | 0) % 3], emit: true, wobble: Math.random() * 9, wobbleAmt: 40 });
       if (Math.random() < (2 + stage * 1.5) * dt) P({ x: 8 + (Math.random() - 0.5) * 6, y: -6 - stage * 3, vx: (Math.random() - 0.5) * 6 + wind, vy: -12 - Math.random() * 8, life: 2.5 + Math.random() * 2, col: '#4a4652', a: 0.35, size: 2, grow: 1.5 });
     }
     // torches & eternal flames on screen
@@ -208,12 +224,35 @@ export function createRenderer(glCanvas, overlay, S) {
     sc.setTransform(1, 0, 0, 1, -camX, -camY);
     ec.setTransform(1, 0, 0, 1, -camX, -camY);
 
-    // ground
+    // ground (looked up once per tile per frame, with a 1-tile margin for shore checks)
+    const gw = x1 - x0 + 3, gh = y1 - y0 + 3;
+    const G = new Array(gw * gh);
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) G[y * gw + x] = w.ground(x0 - 1 + x, y0 - 1 + y);
+    const gAt = (x, y) => G[(y - y0 + 1) * gw + (x - x0 + 1)];
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const g = w.ground(x, y);
+      const g = gAt(x, y);
       const arr = S.ground[g];
       const spr = g === 'water' ? arr[Math.floor(t * 2 + hash3(w.seed, x, y, 5) * 3) % 3] : arr[(hash3(w.seed, x, y, 4) * arr.length) | 0];
       sc.drawImage(spr, x * TILE, y * TILE);
+    }
+    // shores: a sandy lip on land, lapping foam on the water side
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const water = gAt(x, y) === 'water';
+      for (const [dx, dy] of N4) {
+        if ((gAt(x + dx, y + dy) === 'water') === water) continue;
+        const px = x * TILE, py = y * TILE;
+        for (let i = 0; i < TILE; i++) {
+          // i runs along the shared edge; d goes inward from it
+          const n = hash3(w.seed, x * 16 + i * dy, y * 16 + i * dx, 21);
+          const depth = water ? (Math.sin(t * 2 + (x + y) * 1.3 + i * 0.4) > 0.3 ? 2 : 1) : 2 + (n < 0.4 ? 1 : 0);
+          for (let d = 0; d < depth; d++) {
+            const ex = dx > 0 ? px + TILE - 1 - d : dx < 0 ? px + d : px + i;
+            const ey = dy > 0 ? py + TILE - 1 - d : dy < 0 ? py + d : py + i;
+            sc.fillStyle = water ? (d === 0 ? '#9ac0d4' : '#4b7d9a') : d === 0 ? '#b8a272' : n < 0.2 ? '#7a6a48' : '#9a8658';
+            sc.fillRect(ex, ey, 1, 1);
+          }
+        }
+      }
     }
     // ground-level things: roots, drops
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
@@ -269,6 +308,29 @@ export function createRenderer(glCanvas, overlay, S) {
       else { const s = Math.max(1, Math.round(p.size)); ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s); }
     }
     sc.globalAlpha = 1; ec.globalAlpha = 1;
+    R.flares = R.flares.filter((f) => (f.t += dt) < FLARE_TIME);
+    for (const f of R.flares) {
+      const fx = f.x * TILE, fy = f.y * TILE - 10;
+      const rise = Math.min(1, f.t / 0.9);
+      const top = fy - 90 * (1 - (1 - rise) * (1 - rise));
+      if (f.t < 0.9) {
+        ec.fillStyle = '#fff6d8'; ec.fillRect(Math.round(fx) - 1, Math.round(top) - 1, 2, 3);
+        P({ x: fx + (Math.random() - 0.5) * 2, y: top + 2, vx: (Math.random() - 0.5) * 10, vy: 20, life: 0.5, col: Math.random() < 0.5 ? f.color : '#ffd27a', emit: true });
+      } else {
+        if (!f.burst) {
+          f.burst = true;
+          for (let i = 0; i < 70; i++) { const a = Math.random() * Math.PI * 2, s = 30 + Math.random() * 90; P({ x: fx, y: top, vx: Math.cos(a) * s, vy: Math.sin(a) * s, g: 40, drag: 1.2, life: 1 + Math.random(), col: i % 3 ? f.color : '#fff6d8', emit: true }); }
+        }
+        // the star hangs, drifting down and fading
+        const sink = (f.t - 0.9) * 2, fade = 1 - (f.t - 0.9) / (FLARE_TIME - 0.9);
+        const sy = top + sink, pulse = Math.sin(f.t * 8) > 0;
+        ec.globalAlpha = Math.max(0.2, fade);
+        ec.fillStyle = pulse ? '#ffffff' : f.color; ec.fillRect(Math.round(fx) - 1, Math.round(sy) - 1, 3, 3);
+        ec.fillStyle = f.color; ec.fillRect(Math.round(fx) - 3, Math.round(sy), 7, 1); ec.fillRect(Math.round(fx), Math.round(sy) - 3, 1, 7);
+        ec.globalAlpha = 1;
+        if (Math.random() < 0.3) P({ x: fx + (Math.random() - 0.5) * 3, y: sy + 2, vy: 12, life: 0.8, col: f.color, emit: true });
+      }
+    }
     R.hops = R.hops.filter((hp) => (hp.t += dt * 2.5) < 1);
     for (const hp of R.hops) {
       const x = hp.x0 + (hp.x1 - hp.x0) * hp.t, y = hp.y0 + (hp.y1 - hp.y0) * hp.t - Math.sin(hp.t * Math.PI) * 10;
@@ -295,7 +357,8 @@ export function createRenderer(glCanvas, overlay, S) {
       const ratio = Math.min(1, fuel / w.maxFuel());
       sq(0, 0, w.fireRadius(), (0.9 + 0.1 * ratio) * flick(1), 0.2);
       const pal = lerpPalette(w.fire.temp);
-      lights.push({ x: 8 - camX, y: 4 - camY, r: TILE * (4 + 2.5 * ratio), i: (0.55 + 0.4 * ratio) * flick(2), c: rgb(pal[1]) });
+      const sgl = w.stage();
+      lights.push({ x: 8 - camX, y: 4 - sgl * 10 - camY, r: TILE * (4 + 2.5 * ratio + sgl * 1.8), i: Math.min(1.2, (0.55 + 0.4 * ratio) * (1 + sgl * 0.15)) * flick(2), c: rgb(pal[1]) });
     }
     for (const [k, b] of w.bld) {
       const [x, y] = k.split(',').map(Number);
@@ -389,7 +452,6 @@ export function createRenderer(glCanvas, overlay, S) {
     if (st.weather.s === 'rain') tint('#28406a', 0.15);
     if (!me.dead) tint('#b8d8ff', Math.min(1, me.cold / 6 + (me.freezing ? 0.25 : 0)) * 0.35);
     else tint('#141a34', 0.45);
-    tint('#ffb070', R.flash);
   }
 
   // ---------- pieces ----------
@@ -399,17 +461,41 @@ export function createRenderer(glCanvas, overlay, S) {
     return fuel <= 0 ? -1 : r < 0.08 ? 0 : r < 0.25 ? 1 : r < 0.5 ? 2 : r < 0.8 ? 3 : 4;
   }
 
+  // Per fire stage: coal-bed radius, flame [width, height] at full fuel, and side tongues.
+  const FIRE_LOOK = [
+    { bed: 5, w: 14, h: 20, tongues: 2, spread: 4 },
+    { bed: 12, w: 22, h: 34, tongues: 4, spread: 9 },
+    { bed: 22, w: 34, h: 56, tongues: 6, spread: 16 },
+    { bed: 30, w: 46, h: 86, tongues: 8, spread: 22 },
+  ];
   function drawCampfire(w, t) {
-    sc.drawImage(S.campfire, -4, 0);
-    const stage = fireStage(w);
-    if (stage < 0) { ec.fillStyle = '#3a1a10'; ec.fillRect(5, 9, 6, 1); return; }
+    const sg = w.stage(), look = FIRE_LOOK[sg];
+    if (sg > 0) { const r = FIRE_STAGES[sg].ring; sc.drawImage(S.firePit[sg], -r * TILE, -r * TILE); }
+    else sc.drawImage(S.campfire, -4, 0);
+    const size = fireStage(w);
+    if (size < 0) { ec.fillStyle = '#3a1a10'; ec.fillRect(5, 9, 6, 1); return; }
     const pal = lerpPalette(w.fire.temp);
-    const grow = 1 + w.stage() * 0.35; // a Bonfire / Blaze / Inferno burns visibly bigger
-    const H = [3, 7, 11, 15, 20][stage] * grow, Wd = [5, 8, 10, 12, 14][stage] * Math.min(1.8, grow);
-    // embers bed
-    for (let i = 0; i < 10; i++) { ec.fillStyle = (Math.sin(t * 4 + i * 1.7) > 0.2) ? pal[2] : pal[3]; ec.fillRect(4 + i, 9 + (i % 2), 1, 1); }
-    if (stage >= 2) { drawFlame(ec, 4 - w.stage(), 10, Wd * 0.5, H * 0.55, pal, t, 4.1); drawFlame(ec, 12 + w.stage(), 10, Wd * 0.5, H * 0.6, pal, t, 7.3); }
-    drawFlame(ec, 8, 10, Wd, H, pal, t, 1.3);
+    const full = [0.25, 0.45, 0.65, 0.85, 1][size];
+    const cx = 8, base = sg > 0 ? 12 : 10;
+    // glowing coal bed
+    for (let i = 0; i < look.bed * 3; i++) {
+      const a = i * 2.39996, rr = Math.sqrt(i / (look.bed * 3)) * look.bed;
+      const x = Math.round(cx + Math.cos(a) * rr), y = Math.round(base - 1 + Math.sin(a) * rr * 0.55);
+      ec.fillStyle = Math.sin(t * 3 + i * 1.7) > 0.1 ? pal[2] : Math.sin(t * 2 + i) > 0 ? pal[3] : '#3a140a';
+      ec.fillRect(x, y, 1, 1);
+    }
+    // side tongues, then the main flame (an Inferno's is a towering pillar)
+    for (let k = 0; k < look.tongues; k++) {
+      const side = k % 2 ? 1 : -1, off = look.spread * (0.35 + 0.65 * Math.floor(k / 2 + 1) / Math.ceil(look.tongues / 2));
+      const hh = look.h * full * (0.45 + 0.25 * Math.sin(t * 1.3 + k * 2.1));
+      drawFlame(ec, cx + side * off, base, look.w * 0.4, hh, pal, t, k * 3.7 + 1);
+    }
+    drawFlame(ec, cx, base, look.w * full ** 0.5, look.h * full, pal, t, 1.3);
+    if (sg >= 2) drawFlame(ec, cx, base - look.h * full * 0.25, look.w * 0.35, look.h * full * 0.9, [pal[0], pal[0], pal[1], pal[2]], t * 1.3, 9.1);
+    if (sg === 3) {
+      // four corner braziers
+      for (const [px, py] of [[-40, -39], [40, -39], [-40, 41], [40, 41]]) drawFlame(ec, cx + px, base + py - 12, 7, 12 + Math.sin(t * 3 + px) * 2, pal, t, px * 0.1 + py);
+    }
   }
 
   function drawFeature(w, f, x, y, t) {
@@ -457,7 +543,7 @@ export function createRenderer(glCanvas, overlay, S) {
     for (const [dx, dy] of N4) {
       const nx = x + dx, ny = y + dy;
       const nb = w.getB(nx, ny);
-      const link = (nx === 0 && ny === 0) || nb?.t === 'root' || (nb && nb.t !== 'root' && w.connected(nx, ny)) || w.getFeature(nx, ny)?.t === 'eternal' || w.rootNodeAt(nx, ny)?.d === 0;
+      const link = (nx === 0 && ny === 0) || nb?.t === 'root' || (nb && ROOT_LINKS(w, nb, nx, ny)) || w.getFeature(nx, ny)?.t === 'eternal' || w.rootNodeAt(nx, ny)?.d === 0;
       if (!link) continue;
       const len = Math.round(8 * g);
       for (let i = 0; i <= len; i++) {
@@ -521,6 +607,8 @@ export function createRenderer(glCanvas, overlay, S) {
         break;
       }
       case 'hearth': case 'fire_brick': case 'ember_stone': {
+        const ringStage = FIRE_STAGES.findIndex((f) => f.block === b.t && Math.max(Math.abs(x), Math.abs(y)) === f.ring);
+        if (ringStage > 0 && w.stage() >= ringStage) break; // fused into the fire pit
         sc.drawImage(S.bld[b.t], px, py);
         // ring blocks around a living fire glow at their seams
         if (w.fire.fuel > 0 && Math.max(Math.abs(x), Math.abs(y)) <= 3 && w.rootNodeAt(x, y)?.net === 'fire') {
@@ -602,7 +690,7 @@ export function createRenderer(glCanvas, overlay, S) {
     outIcon(b, fx + (spr.width >> 1) - 8, fy + 10, t);
   }
 
-  // Chevrons on the shared edge when a plant or machine feeds the machine beside it.
+  // Chevrons on the shared edge when a plant or building feeds the building beside it.
   function drawFeedLinks(w, b, x, y, t) {
     for (const [, , , ex, ey, fx, fy] of w.feedTargets(x, y, b.t)) {
       const dx = ex - fx, dy = ey - fy;
@@ -709,8 +797,47 @@ export function createRenderer(glCanvas, overlay, S) {
     for (const p of st.players.values()) {
       if (p.dead || p.id === st.myId) continue;
       const [sx, sy] = toS(p.rx * TILE, p.ry * TILE - 14);
-      oc.fillStyle = 'rgba(0,0,0,0.6)'; oc.fillText(p.name, sx + dpr, sy + dpr);
+      const fs = 13 * dpr * (R.ui || 1), tw = oc.measureText(p.name).width, pad = 4 * dpr;
+      oc.fillStyle = 'rgba(10, 7, 8, 0.72)';
+      oc.fillRect(Math.round(sx - tw / 2 - pad), Math.round(sy - fs * 0.85 - pad / 2), Math.round(tw + pad * 2), Math.round(fs + pad));
       oc.fillStyle = p.color; oc.fillText(p.name, sx, sy);
+    }
+
+    // flares: where did they come from?
+    for (const f of R.flares) {
+      if (f.t < 0.9) continue;
+      const [fx, fy] = toS(f.x * TILE, f.y * TILE);
+      const cx = overlay.width / 2, cy = overlay.height / 2;
+      const dist = Math.round(Math.hypot(f.x - st.me.x, f.y - st.me.y));
+      const fade = Math.min(1, (FLARE_TIME - f.t) / 4);
+      const label = `${f.name} · ${dist}m`;
+      const m = 40 * dpr;
+      oc.globalAlpha = fade;
+      oc.font = `${Math.round(12 * dpr * (R.ui || 1))}px "Tiny5", monospace`;
+      oc.textAlign = 'center';
+      if (fx > m && fx < overlay.width - m && fy > m && fy < overlay.height - m) {
+        const tw = oc.measureText(label).width;
+        oc.fillStyle = 'rgba(10, 7, 8, 0.72)'; oc.fillRect(fx - tw / 2 - 4 * dpr, fy + 8 * dpr, tw + 8 * dpr, 16 * dpr);
+        oc.fillStyle = f.color; oc.fillText(label, fx, fy + 20 * dpr);
+      } else {
+        // clamp the direction to the screen edge
+        const ang = Math.atan2(fy - cy, fx - cx);
+        const kx = (cx - m) / Math.abs(Math.cos(ang) || 1e-6), ky = (cy - m) / Math.abs(Math.sin(ang) || 1e-6);
+        const k = Math.min(kx, ky);
+        const ax = cx + Math.cos(ang) * k, ay = cy + Math.sin(ang) * k;
+        const sz = 12 * dpr * (R.ui || 1);
+        oc.save(); oc.translate(ax, ay); oc.rotate(ang);
+        oc.fillStyle = 'rgba(10, 7, 8, 0.8)';
+        oc.beginPath(); oc.moveTo(sz + 3 * dpr, 0); oc.lineTo(-sz * 0.7 - 2 * dpr, -sz * 0.8 - 2 * dpr); oc.lineTo(-sz * 0.7 - 2 * dpr, sz * 0.8 + 2 * dpr); oc.fill();
+        oc.fillStyle = Math.sin(f.t * 6) > 0 ? f.color : '#fff6d8';
+        oc.beginPath(); oc.moveTo(sz, 0); oc.lineTo(-sz * 0.7, -sz * 0.8); oc.lineTo(-sz * 0.7, sz * 0.8); oc.fill();
+        oc.restore();
+        const lx = ax - Math.cos(ang) * 34 * dpr, ly = ay - Math.sin(ang) * 26 * dpr;
+        const tw = oc.measureText(label).width;
+        oc.fillStyle = 'rgba(10, 7, 8, 0.72)'; oc.fillRect(lx - tw / 2 - 4 * dpr, ly - 12 * dpr, tw + 8 * dpr, 16 * dpr);
+        oc.fillStyle = f.color; oc.fillText(label, lx, ly);
+      }
+      oc.globalAlpha = 1;
     }
 
     // floating texts
