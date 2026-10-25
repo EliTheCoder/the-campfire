@@ -108,15 +108,15 @@ def vel(v, spread=5):
     return max(1, min(127, int(v + rng.uniform(-spread, spread))))
 
 def bed():
-    # Eli's chords held for the bar (softly rolled from the bottom), with his bass line on piano:
-    # struck with the chord and again mid-bar, as the synth's sustain would have carried it.
+    # Eli's chords and his bass line (synth in Echo, piano here), struck together on the
+    # downbeat and held for the bar, exactly on the grid like his - no roll, no off-beat
+    # re-strikes, so they sit with the melody instead of pushing ahead of it.
     notes = []
     for b, (_, _, chord, bass, _) in enumerate(BARS_DATA):
         t0 = b * BAR
-        for i, p in enumerate(chord):
-            notes.append((human(t0 + i * 0.03, 0.01), p, BAR, vel(34 - i * 2 if p > 40 else 40)))
-        notes.append((human(t0, 0.01), bass + 12 if bass < 33 else bass, BAR, vel(38)))
-        notes.append((human(t0 + 2.5), bass + 12, 1.5, vel(24)))
+        for p in chord:
+            notes.append((t0, p, BAR, vel(32 if p > 40 else 40, 2)))
+        notes.append((t0, bass + 12 if bass < 33 else bass, BAR, vel(38, 2)))
     return notes
 
 def flow():
@@ -131,7 +131,7 @@ def flow():
         tones.append(tones[0] + 12)
         for i, idx in enumerate(PAT):
             v = 26 + (6 if i == 0 else 3 if i == 4 else 0)
-            notes.append((human(b * BAR + i * 0.5), tones[idx], 0.9, vel(v, 2)))
+            notes.append((human(b * BAR + i * 0.5, 0.008), tones[idx], 0.9, vel(v, 2)))
     return notes
 
 def melody():
@@ -140,7 +140,7 @@ def melody():
         for line, base in ((mel, 50), (octv, 36)):
             for t, p, d in line:
                 accent = 6 if t == 0 else 3 if t == 2 else 0
-                notes.append((human(b * BAR + t, 0.02), p, d * 0.95, vel(base + accent)))
+                notes.append((human(b * BAR + t, 0.008), p, d * 0.95, vel(base + accent)))
     return notes
 
 def lonely():

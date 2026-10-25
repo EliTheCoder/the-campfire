@@ -246,37 +246,39 @@ export function createAudio() {
 
   // ---------- adaptive music ----------
   // Four piano stems of the same piece loop in sync (rendered by music-src/render.sh); the game
-  // fades each one in or out with the state of the fire. Streamed as media elements (decoding
-  // four two-minute stems would cost ~200MB) and nudged back into sync if they ever drift.
+  // fades each one in or out with the state of the fire. They're decoded and started on the
+  // same audio-clock instant, so they stay sample-locked forever (separate media elements
+  // drifted tens of ms apart - audible as the chords running ahead of the tune). Decoding at
+  // 22.05kHz keeps memory sane (~60MB for all four); every stem is lowpassed under 5kHz anyway.
   const STEMS = ['bed', 'flow', 'melody', 'lonely'];
+  const MUSIC_RATE = 22050;
   const stems = {};
+  let musicT0 = 0, musicLen = 0;
   function loadMusic() {
-    for (const name of STEMS) {
-      const el = new Audio(`music/${name}.ogg`);
-      el.loop = true;
-      el.preload = 'auto';
-      const g = ctx.createGain();
-      g.gain.value = 0;
-      ctx.createMediaElementSource(el).connect(g).connect(music);
-      stems[name] = { el, g, target: 0 };
-    }
-    let started = false;
-    const startAll = () => {
-      if (started || STEMS.some((s) => stems[s].el.readyState < 3)) return;
-      started = true;
-      for (const s of STEMS) { stems[s].el.currentTime = 0; stems[s].el.play().catch(() => {}); }
-    };
-    for (const s of STEMS) stems[s].el.addEventListener('canplaythrough', startAll);
-    setInterval(() => {
-      if (!started) return;
-      const lead = stems.bed.el.currentTime;
-      for (const s of STEMS.slice(1)) {
-        const el = stems[s].el;
-        if (Math.abs(el.currentTime - lead) > 0.06 && Math.abs(el.currentTime - lead) < 100) el.currentTime = lead;
-      }
-    }, 2000);
+    const decoder = new OfflineAudioContext(2, 1, MUSIC_RATE);
+    Promise.all(STEMS.map((name) => fetch(`music/${name}.ogg`).then((r) => r.arrayBuffer()).then((buf) => decoder.decodeAudioData(buf))))
+      .then((buffers) => {
+        musicT0 = ctx.currentTime + 0.15;
+        musicLen = buffers[0].duration;
+        STEMS.forEach((name, i) => {
+          const g = ctx.createGain();
+          g.gain.value = 0;
+          g.connect(music);
+          const src = ctx.createBufferSource();
+          src.buffer = buffers[i];
+          src.loop = true;
+          src.connect(g);
+          src.start(musicT0);
+          // a gain set before the stems arrived still applies
+          const target = stems[name]?.target ?? 0;
+          if (target) g.gain.setTargetAtTime(target, ctx.currentTime, 2.5);
+          stems[name] = { g, src, target };
+        });
+      })
+      .catch((e) => console.warn('music failed to load', e));
+    for (const name of STEMS) stems[name] = { target: 0 };
   }
-  A.musicInfo = () => STEMS.map((s) => stems[s] && { s, t: +stems[s].el.currentTime.toFixed(2), paused: stems[s].el.paused, gain: +stems[s].g.gain.value.toFixed(2) });
+  A.musicInfo = () => STEMS.map((s) => ({ s, t: musicLen ? +(((ctx.currentTime - musicT0) % musicLen + musicLen) % musicLen).toFixed(2) : null, playing: !!stems[s]?.src, gain: stems[s]?.g ? +stems[s].g.gain.value.toFixed(2) : 0 }));
   // mix: { bed, flow, melody, lonely } target levels 0..~1.6. Changes glide over a few seconds.
   A.setMusic = (mix) => {
     if (!ctx) return;
@@ -284,7 +286,7 @@ export function createAudio() {
       const v = mix[s] ?? 0;
       if (!stems[s] || Math.abs(stems[s].target - v) < 0.01) continue;
       stems[s].target = v;
-      stems[s].g.gain.setTargetAtTime(v, ctx.currentTime, v > 0 ? 2.5 : 1.5);
+      stems[s].g?.gain.setTargetAtTime(v, ctx.currentTime, v > 0 ? 2.5 : 1.5);
     }
   };
 
