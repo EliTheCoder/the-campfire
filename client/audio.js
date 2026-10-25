@@ -33,6 +33,8 @@ export function createAudio() {
     loadMusic();
   };
 
+  A.state = () => ctx?.state ?? 'none';
+
   A.toggleMute = () => {
     A.muted = !A.muted;
     try { localStorage.setItem('campfire.muted', A.muted ? '1' : '0'); } catch {}

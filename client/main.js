@@ -13,7 +13,7 @@ const iconURL = {};
 for (const [k, c] of Object.entries(S.icon)) iconURL[k] = c.toDataURL();
 
 const R = createRenderer($('gl'), $('overlay'), S);
-if (import.meta.env?.DEV) window.__campfire = { get st() { return st; }, R };
+if (import.meta.env?.DEV) window.__campfire = { get st() { return st; }, R, get audio() { return audio; } };
 const audio = createAudio();
 
 // HUD scale follows window height; -/= nudge it and the choice is remembered.
@@ -768,7 +768,16 @@ function frame(now) {
     updateHUD(dt);
     updateAudio(dt);
     R.draw(st, dt, t);
+  } else {
+    // Main menu: sitting right beside a healthy campfire.
+    audio.listener.x = 0.5; audio.listener.y = 1.2;
+    audio.update({ dt, fireStage: 3, temp: 1, weather: 'clear', freezing: false, cold: 0, eternalDist: 99, torchDist: 99 });
   }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// Browsers only allow sound after the first interaction, so the menu fire starts crackling then.
+const wakeAudio = () => { audio.init(); removeEventListener('pointerdown', wakeAudio); removeEventListener('keydown', wakeAudio); };
+addEventListener('pointerdown', wakeAudio);
+addEventListener('keydown', wakeAudio);
