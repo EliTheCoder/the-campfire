@@ -146,7 +146,7 @@ def arp():
         run = [t for o in (0, 12) for t in tones] + [tones[0] + 24]
         seq = run + run[-2:0:-1]                                                   # up, then down
         for i in range(16):
-            v = 30 + (8 if i % 4 == 0 else 0) + (4 if i == 0 else 0)
+            v = 44 + (10 if i % 4 == 0 else 0) + (4 if i == 0 else 0)
             notes.append((human(b * BAR + i * 0.25, 0.004), seq[(i + b * 3) % len(seq)], 0.3, vel(v, 2)))
     return notes
 

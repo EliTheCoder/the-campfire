@@ -23,7 +23,7 @@ for s in $STEMS; do
     bed) TONE="lowpass 1250 bass +2 120" ;;       # Eli's chords were a lowpassed (~1.15k) piano
     flow) TONE="lowpass 1900 treble -6 3000" ;;
     melody) TONE="lowpass 5000 treble +1 3000" ;;
-    arp) TONE="lowpass 4800 treble +2 3500 gain -2" ;;
+    arp) TONE="lowpass 5200 treble +3 3500" ;;
     *) TONE="lowpass 2800 treble -3 3500" ;;
   esac
   sox "build/$s-raw.wav" "build/$s-wet.wav" \

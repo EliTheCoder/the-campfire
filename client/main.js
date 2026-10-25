@@ -1234,7 +1234,7 @@ function updateAudio(dt) {
     flow: !dark && r > 0.25 ? 1 : 0,
     melody: !dark && r > 0.45 ? 1 : 0,
     lonely: dark || r < 0.25 ? 1.6 : 0,
-    arp: !dark && epic ? 0.9 : 0,
+    arp: !dark && epic ? 1 : 0,
   });
 }
 
