@@ -51,48 +51,45 @@ CHORDS = [bar for _, sec in SECTIONS for bar in sec]
 BARS = len(CHORDS)
 
 # ---------------------------------------------------------------- melody
-# Simple and on the beat: only quarter, half and whole notes, built from sequences - one small
-# idea repeated a step lower (or higher) each bar, so the tune walks through the scale.
+# The hook is one bar: a note, a quick dip to its lower neighbour and back (two eighths), then a
+# held note a third up - "F#, E-F#, A". Its rhythm repeats while the pitches move (sequence),
+# downbeats land on chord tones, and neighbour/passing notes (supertonic etc.) give the colour.
 # (beat within bar, note, length in beats) per bar
-def up(a, b, c):     # three notes stepping up: quarter, quarter, half
-    return [(0, a, 1), (1, b, 1), (2, c, 2)]
-def down(a, b, c):   # the same shape upside down
-    return [(0, a, 1), (1, b, 1), (2, c, 2)]
-def pair(a, b):      # two half notes
-    return [(0, a, 2), (2, b, 2)]
-def whole(a):
-    return [(0, a, 4)]
+def hook(a, nb, top):
+    return [(0, a, 1), (1, nb, 0.5), (1.5, a, 0.5), (2, top, 2)]
+def bar(*notes):       # free bar: (beat, note, length)...
+    return list(notes)
 
 MEL = {
     'A': [
-        up('D5', 'E5', 'F#5'),       # Dmaj9      rising idea...
-        up('C#5', 'D5', 'E5'),       # Bm7        ...a step lower
-        up('B4', 'C#5', 'D5'),       # Gmaj7#11   ...lower
-        up('A4', 'B4', 'C#5'),       # A/C#       ...lower
-        down('F#5', 'E5', 'D5'),     # D/F#       answer: falling idea...
-        down('E5', 'D5', 'C#5'),     # Gmaj9      ...a step lower
-        down('D5', 'C#5', 'B4'),     # Em9        ...lower
-        down('C#5', 'B4', 'A4'),     # Asus4->A   ...lower, leading home to D
+        hook('F#5', 'E5', 'A5'),                                    # Dmaj9     the hook
+        hook('D5', 'C#5', 'F#5'),                                   # Bm7       ...a third lower
+        hook('B4', 'A4', 'D5'),                                     # Gmaj7#11  ...lower again
+        bar((0, 'C#5', 2), (2, 'B4', 1), (3, 'A4', 1)),             # A/C#      settle
+        hook('F#5', 'E5', 'A5'),                                    # D/F#      the hook returns
+        bar((0, 'B5', 1), (1, 'A5', 0.5), (1.5, 'G5', 0.5), (2, 'F#5', 2)),   # Gmaj9  running down
+        bar((0, 'G5', 1), (1, 'F#5', 0.5), (1.5, 'E5', 0.5), (2, 'D5', 2)),   # Em9    ...and down
+        bar((0, 'E5', 1), (1, 'D5', 1), (2, 'C#5', 2)),             # Asus4->A  sus resolves
     ],
     "A'": [
-        up('D5', 'E5', 'F#5'),
-        up('C#5', 'D5', 'E5'),
-        up('B4', 'C#5', 'D5'),
-        up('A4', 'B4', 'C#5'),
-        down('A5', 'G5', 'F#5'),     # the answer starts higher: the peak
-        down('G5', 'F#5', 'E5'),
-        down('F#5', 'E5', 'D5'),
-        whole('E5'),
+        hook('F#5', 'E5', 'A5'),
+        hook('D5', 'C#5', 'F#5'),
+        hook('B4', 'A4', 'D5'),
+        bar((0, 'C#5', 1), (1, 'E5', 1), (2, 'A5', 2)),             # A/C#      leap up...
+        bar((0, 'D6', 2), (2, 'C#6', 1), (3, 'A5', 1)),             # D/F#      ...to the peak
+        bar((0, 'B5', 1), (1, 'A5', 0.5), (1.5, 'G5', 0.5), (2, 'F#5', 2)),   # Gmaj9
+        bar((0, 'G5', 1), (1, 'F#5', 0.5), (1.5, 'E5', 0.5), (2, 'D5', 1), (3, 'B4', 1)),  # Em9
+        bar((0, 'D5', 2), (2, 'C#5', 2)),                           # A         sus resolves
     ],
-    'B': [                           # slower: falling pairs over a stepping line
-        pair('F#5', 'D5'),           # Bm9
-        whole('B4'),                 # Gmaj7
-        pair('E5', 'C#5'),           # D/F#       pairs fall a step each time...
-        whole('A4'),                 # Em7        ...and so do the long notes
-        pair('D5', 'B4'),            # Bm9
-        whole('G4'),                 # Gmaj7#11
-        pair('B4', 'A4'),            # Asus2
-        whole('C#5'),                # A
+    'B': [                                                          # the hook, in minor
+        hook('D5', 'C#5', 'F#5'),                                   # Bm9
+        bar((0, 'B4', 2), (2, 'A4', 1), (3, 'B4', 1)),              # Gmaj7
+        hook('A4', 'G4', 'D5'),                                     # D/F#
+        bar((0, 'E5', 2), (2, 'D5', 1), (3, 'B4', 1)),              # Em7
+        hook('F#5', 'E5', 'D5'),                                    # Bm9       (falls this time)
+        bar((0, 'D5', 1), (1, 'C#5', 0.5), (1.5, 'B4', 0.5), (2, 'B4', 2)),   # Gmaj7#11 (C#: the #11 colour)
+        bar((0, 'B4', 1), (1, 'A4', 0.5), (1.5, 'B4', 0.5), (2, 'E5', 2)),    # Asus2
+        bar((0, 'C#5', 2), (2, 'E5', 2)),                           # A         E steps into the hook's F#
     ],
 }
 MEL["A''"] = MEL['A']
