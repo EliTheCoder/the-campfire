@@ -23,7 +23,7 @@ for s in $STEMS; do
     bed) TONE="lowpass 1250 bass +2 120" ;;       # Eli's chords were a lowpassed (~1.15k) piano
     flow) TONE="lowpass 1900 treble -6 3000" ;;
     melody) TONE="lowpass 5000 treble +1 3000" ;;
-    arp) TONE="lowpass 5200 treble +3 3500" ;;
+    arp) TONE="lowpass 5200 treble +3 3500 gain -6" ;;  # struck hard for the bright attack, then sat just above the melody
     *) TONE="lowpass 2800 treble -3 3500" ;;
   esac
   sox "build/$s-raw.wav" "build/$s-wet.wav" \
@@ -32,14 +32,19 @@ for s in $STEMS; do
     trim "$LOOP" "$LOOP"
 done
 
-# one gain for every stem, set so the full mix peaks at -1.5 dB (keeps their balance)
-sox -m $(for s in $STEMS; do echo "-v 1 build/$s-wet.wav"; done) build/mix.wav  # -v 1: true sum, like the game playing every stem at once
-PEAK=$(sox build/mix.wav -n stat 2>&1 | awk '/Maximum amplitude/{a=$3} /Minimum amplitude/{b=-$3} END{print (a>b?a:b)}')
+# One gain for every stem, set from the everyday mix (everything but the epic arp) so it peaks
+# at -1.5 dB and their balance is kept. The epic moment plays bed+flow+melody+arp together, so if
+# that would clip, the gain comes down just enough for it too.
+peak() { sox "$@" -n stat 2>&1 | awk '/Maximum amplitude/{a=$3} /Minimum amplitude/{b=-$3} END{print (a>b?a:b)}'; }
+sox -m $(for s in bed flow melody lonely; do echo "-v 1 build/$s-wet.wav"; done) build/mix.wav  # -v 1: true sum, like the game playing them at once
+sox -m $(for s in bed flow melody arp; do echo "-v 1 build/$s-wet.wav"; done) build/epic.wav
+PEAK=$(python3 -c "print(max($(peak build/mix.wav), $(peak build/epic.wav) * 0.84 / 0.95))")
 GAIN=$(python3 -c "import math; print(round(20*math.log10(0.84/$PEAK), 2))")
-echo "mix peak $PEAK -> gain ${GAIN} dB"
+echo "mix peak $(peak build/mix.wav), epic peak $(peak build/epic.wav) -> gain ${GAIN} dB"
 
 for s in $STEMS; do
   sox "build/$s-wet.wav" -C 6 "$OUT/$s.ogg" gain "$GAIN"
 done
 sox build/mix.wav -C 6 "$OUT/preview-full.ogg" gain "$GAIN"
+sox build/epic.wav -C 6 "$OUT/preview-epic.ogg" gain "$GAIN"   # what an epic moment sounds like
 ls -la "$OUT"
