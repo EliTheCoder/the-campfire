@@ -16,7 +16,8 @@ const savePath = path.resolve(opt('save', 'saves/world.json'));
 const SAVE_EVERY = 30; // seconds
 
 const log = (...a) => console.log('\x1b[33m[campfire]\x1b[0m', ...a);
-const wss = new WebSocketServer({ port });
+const host = opt('host'); // e.g. 127.0.0.1 behind a reverse proxy
+const wss = new WebSocketServer({ port, host });
 
 const send = (ws, obj) => { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 const broadcast = (obj) => {
@@ -62,7 +63,7 @@ wss.on('connection', (ws, req) => {
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     if (!player) {
-      if (m.t === 'join') { player = game.join(ws, m.name, m.token); log(`${player.name} joined from ${req.socket.remoteAddress}`); }
+      if (m.t === 'join') { player = game.join(ws, m.name, m.token); log(`${player.name} joined from ${req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket.remoteAddress}`); }
       return;
     }
     game.handle(player, m);
@@ -78,7 +79,7 @@ setInterval(() => {
   game.tick(dt);
 }, 1000 / TICK_RATE);
 
-log(`Listening on ws://0.0.0.0:${port}  (seed ${game.seed}). Type "help" for commands.`);
+log(`Listening on ws://${host ?? "0.0.0.0"}:${port}  (seed ${game.seed}). Type "help" for commands.`);
 
 const findPlayer = (name) => [...game.players.values()].find((p) => p.name.toLowerCase() === String(name).toLowerCase());
 const commands = {
