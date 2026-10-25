@@ -6,6 +6,9 @@ export const SNAP_EVERY = 2; // ticks per snapshot (10Hz)
 export const DEFAULT_PORT = 7777;
 
 // Radius and max fuel depend on the fire's stage (see FIRE_STAGES in defs.js).
+// How much hungrier the fire is with n players online.
+export const crowdMult = (n) => 1 + FIRE.perExtraPlayer * Math.pow(Math.max(0, n - 1), FIRE.crowdCurve);
+
 export const FIRE = {
   startFuel: 240,
   baseBurn: 1, // fuel/sec at minute 0
@@ -17,7 +20,9 @@ export const FIRE = {
   reviveCost: 120,
   rainMult: 1.5,
   hotBonus: 0.85, // burn multiplier when temperature exceeds demand
-  perExtraPlayer: 0.6, // +60% burn for each player online beyond the first
+  perExtraPlayer: 0.6, // burn for extra players online: 1 + 0.6 * (extra players ^ crowdCurve)
+  crowdCurve: 0.75, //   ...diminishing, so 2 players = 1.6x, 4 = 2.4x, 10 = 4.1x (not 6.4x)
+  groupStartPlayers: 3, // a new fire with this many people starts full, not at startFuel
 };
 
 export const ETERNAL_ROOT_REACH = 40; // eternal flames never weaken

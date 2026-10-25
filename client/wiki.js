@@ -81,7 +81,7 @@ export function buildWiki(iconURL, keyOf) {
     <h4>Placed light</h4>
     <p>A placed ${bld('torch')} lights 5x5 for everyone for ${TORCH.placedFuel}s. Hook it to an ${link('bld:root', 'Ember Root')} and it burns forever.</p>`);
   add('guide:fire', G, 'The fire\'s hunger', 'charcoal', `
-    <p>The fire never stops getting hungrier. Its burn rate grows every minute (and keeps accelerating), it burns ${Math.round((FIRE.rainMult - 1) * 100)}% faster in rain, and <b>${Math.round(FIRE.perExtraPlayer * 100)}% faster for every extra player</b> online.</p>
+    <p>The fire never stops getting hungrier. Its burn rate grows every minute (and keeps accelerating), it burns ${Math.round((FIRE.rainMult - 1) * 100)}% faster in rain, and <b>faster with more players</b> online (2 players: 1.6x, 4: 2.4x, 10: 4.1x - each extra player adds a little less).</p>
     <h4>Heat demand</h4>
     <p>Every ${FIRE.demandEveryMin} minutes it demands the next <b>heat tier</b>. Fuel below the demand mostly turns to ash: each tier short keeps only ${Math.round(FIRE.belowHeatPenalty * 100)}% of its value. The HUD shows what it's hungry for.</p>
     <table class="wtable"><tr><th>Tier</th><th>Fuel</th><th>Value</th><th>Demanded from</th></tr>
@@ -135,7 +135,7 @@ export function buildWiki(iconURL, keyOf) {
       <li>If everyone is dead, everyone rises after a few seconds - at the same cost each.</li>
     </ul>`);
   add('guide:together', G, 'Playing together', 'flare', `
-    <p>Everyone shares one fire. More players means more hands - and a hungrier fire (+${Math.round(FIRE.perExtraPlayer * 100)}% burn per extra player).</p>
+    <p>Everyone shares one fire. More players means more hands - and a hungrier fire (2 players: 1.6x burn, 4: 2.4x, 10: 4.1x). A new fire with 3 or more people around starts full.</p>
     <ul>
       <li>Lost? Fire a ${item('flare')}. Everyone sees it go up and gets an arrow pointing to where it came from, with your name and distance.</li>
       <li>Throw items to a friend with ${K('drop')} (Shift: the whole stack) - they land where you're pointing.</li>

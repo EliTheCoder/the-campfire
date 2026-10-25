@@ -1,7 +1,7 @@
 import { World, key, unkey, N4, N8, crateSlots, CRATE_SLOTS } from '../shared/world.js';
 import { ITEMS, BUILDINGS, FEATURES, RECIPES, MULTIBLOCKS, BLUEPRINTS, NEW_BLUEPRINT_WEIGHT, BLUEPRINT_PITY, FIRE_STAGES, stackMax } from '../shared/defs.js';
 import { NOTES } from '../shared/worldgen.js';
-import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR, BASIN } from '../shared/constants.js';
+import { FIRE, TORCH, COLD_GRACE, REACH, PLAYER_COLORS, PACKET_SPEED, SNAP_EVERY, PLAYER_HALF, HOTBAR, BASIN, crowdMult } from '../shared/constants.js';
 import { newInv, addItem, removeItem, countItem, hasAll } from '../shared/inventory.js';
 
 const OUT_CAP = 8;
@@ -126,6 +126,14 @@ export class Game {
 
   // Players are identified by a per-browser token, so reconnecting restores you exactly
   // (inventory, position, death) instead of handing out a fresh starter kit.
+  // A big group shares one small fire: while it's young (first two minutes), once enough people
+  // have gathered it starts full instead of at startFuel, so they get going before it gutters.
+  groupStart() {
+    const w = this.world;
+    if (this.over || w.time > 120 || this.players.size < FIRE.groupStartPlayers) return;
+    if (w.fire.fuel < w.maxFuel()) { w.setFuel(w.maxFuel()); this.say('More hands gather round - the fire is built up high.', '#ffb070'); }
+  }
+
   join(ws, name, token) {
     name = String(name || 'Wanderer').slice(0, 16);
     token = typeof token === 'string' ? token.slice(0, 64) : null;
@@ -151,6 +159,7 @@ export class Game {
     p = { id, ws, token, name, color: PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length] };
     this.resetPlayer(p);
     this.players.set(id, p);
+    this.groupStart();
     this.welcome(p);
     this.say(`${p.name} joined the fire.`, p.color);
     return p;
@@ -745,7 +754,7 @@ export class Game {
       f.demand = Math.min(FIRE.maxDemand, Math.floor(min / FIRE.demandEveryMin));
       f.temp += (Math.min(1, f.temp) - f.temp) * dt * 0.004;
       // It never stops getting hungrier: linear growth times a slow exponential.
-      const crowd = 1 + FIRE.perExtraPlayer * (this.players.size - 1); // more mouths, more hunger
+      const crowd = crowdMult(this.players.size); // more mouths, more hunger (less so for each one)
       const base = FIRE.baseBurn * crowd * (1 + min * FIRE.hungerPerMin) * Math.pow(FIRE.hungerGrowth, min)
         * (rain ? FIRE.rainMult : 1) * (f.temp >= f.demand + 1 ? FIRE.hotBonus : 1);
 
