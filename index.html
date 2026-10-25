@@ -27,7 +27,7 @@
     <div id="log"></div>
     <input id="chat" maxlength="200" placeholder="say something..." hidden />
     <div id="tooltip" hidden></div>
-    <div id="hint-keys">[Tab] Inventory · [<kbd data-key="craft"></kbd>] Craft · [<kbd data-key="help"></kbd>] Help · [Esc] Menu</div>
+    <div id="hint-keys">[Tab] Inventory · [<kbd data-key="craft"></kbd>] Craft · [<kbd data-key="help"></kbd>] Wiki · [Esc] Menu</div>
   </div>
 
   <!-- Panels live outside the HUD so the main menu can open them too. -->
@@ -42,7 +42,7 @@
       <button id="m-resume">Resume</button>
       <button class="alt" data-open="settings-panel">Settings</button>
       <button class="alt" data-open="controls-panel">Controls</button>
-      <button class="alt" data-open="help-panel">How to play</button>
+      <button class="alt" data-open="wiki-panel">Wiki</button>
       <button id="m-giveup" class="danger">Give in to the dark</button>
       <p class="small dim" id="m-giveup-note">Respawn at the fire. You drop everything where you stand.</p>
       <button id="m-leave" class="alt">Leave to main menu</button>
@@ -100,29 +100,10 @@
     <div class="panel-foot"><button class="alt" data-close>Back</button></div>
   </div>
 
-  <div id="help-panel" class="panel" hidden>
-    <h2>Keep the fire alive</h2>
-    <div class="scroll"><div class="help-cols">
-      <div>
-        <p><b>The fire is everything.</b> If it goes out, you all lose. Feed it: select fuel, <b>right-click</b> the fire (Ctrl = whole stack).</p>
-        <p><b>You can only walk in light.</b> Carry torches: they light at any flame and are put away while you're in light. Out in the dark they burn one at a time and light a 3x3 around you, only for you. Run out and the dark becomes a wall.</p>
-        <p><b>Place torches</b> to light 5x5 for everyone. They burn out unless an <b>Ember Root</b> connects them to the fire.</p>
-        <p>If your light dies in the dark you have a few seconds to reach light. Otherwise you drop everything. A friend can revive you at the fire, but it costs fuel.</p>
-        <p>The fire gets <b>hungrier forever</b>. Every few minutes it demands a hotter fuel, and weaker fuel turns to ash. Climb the ladder: leaves, sticks, logs, peat, charcoal, resin, lignite, heartwood, coal, ember crystal.</p>
-        <p><b>Grow the fire</b> to hold more fuel and light more ground: ring it with 8 Hearthstones (Bonfire), then 16 Fire Bricks around that (Blaze), then 24 Ember Stones (Inferno).</p>
-      </div>
-      <div>
-        <p><b>Controls</b></p>
-        <p><kbd data-key="up,left,down,right"></kbd>: move · Hold LMB: gather / pick up · RMB: use / place / feed<br/>
-        1-8 / wheel: hotbar · Tab / <kbd data-key="inventory"></kbd>: inventory · <kbd data-key="craft"></kbd>: craft · <kbd data-key="revive"></kbd>: revive friend<br/>
-        <kbd data-key="drop"></kbd>: drop one (Shift: stack) · Middle click: pick block · <kbd data-key="chat"></kbd>: chat · <kbd data-key="graphics"></kbd>: low graphics · Esc: menu</p>
-        <p><b>Automation</b></p>
-        <p>Buildings touching a powered root send their output down it into the fire. Kindling Bushes and Grove Trees grow fuel in light. Rot Pits turn leaves into peat; plants touching one feed it directly. A Crate beside a building stores its output instead.</p>
-        <p><b>Eternal flames</b> never go out. Roots touching one glow teal: they heat torches and buildings for free, and send their output into the flame's cache for you to carry home. Teal and orange roots can never meet.</p>
-        <p class="dim">Out in the dark: ruins, dead campfires, shrines (a guaranteed blueprint), collapsed mines (coal, geodes; bring a pickaxe) and ancient groves (glowmoss, heartwood).</p>
-      </div>
-    </div></div>
-    <div class="panel-foot"><button class="alt" data-close>Back</button></div>
+  <div id="wiki-panel" class="panel" hidden>
+    <div class="wiki-head"><button id="wiki-back" class="alt small-btn" title="Back">&lt;</button><h2>Wiki</h2><input id="wiki-search" placeholder="Search the wiki..." autocomplete="off" /></div>
+    <div class="wiki-body"><nav id="wiki-nav" class="scroll"></nav><article id="wiki-article" class="scroll"></article></div>
+    <div class="panel-foot"><span class="small dim">[<kbd data-key="help"></kbd>] opens the page for whatever you're pointing at</span><button class="alt" data-close>Close</button></div>
   </div>
 
   <div id="connect" class="screen menu-screen">
@@ -133,7 +114,7 @@
       <button id="join">Gather 'round</button>
       <button class="alt" data-open="settings-panel">Settings</button>
       <button class="alt" data-open="controls-panel">Controls</button>
-      <button class="alt" data-open="help-panel">How to play</button>
+      <button class="alt" data-open="wiki-panel">Wiki</button>
       <button class="alt" data-open="credits-panel">Credits</button>
       <button id="quit" class="alt" hidden>Quit</button>
       <p id="connect-err" class="err"></p>

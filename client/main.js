@@ -5,6 +5,7 @@ import { countItem, hasAll } from '../shared/inventory.js';
 import { makeSprites, FLAME_PALETTES } from './sprites.js';
 import { createRenderer } from './render.js';
 import { createAudio } from './audio.js';
+import { buildWiki, WIKI_CATS, wikiIdFor } from './wiki.js';
 import { chunkOf } from '../shared/worldgen.js';
 
 const $ = (id) => document.getElementById(id);
@@ -82,7 +83,7 @@ function onMsg(m) {
       $('over-screen').hidden = !m.over;
       renderInv();
       if (R.software && !R.low && !st.softwareHinted) st.softwareHinted = true, log('Your browser is drawing WebGL in software, which is slow. Press [F2] for low graphics, or enable hardware acceleration.', '#ffcc66');
-      if (!localStorage.getItem('campfire.helpSeen')) { $('help-panel').hidden = false; localStorage.setItem('campfire.helpSeen', '1'); }
+      if (!localStorage.getItem('campfire.helpSeen')) { openWiki('guide:start'); localStorage.setItem('campfire.helpSeen', '1'); }
       break;
     }
     case 'snap': {
@@ -155,7 +156,7 @@ const DEFAULT_BINDS = {
 };
 const BIND_NAMES = {
   up: 'Move up', left: 'Move left', down: 'Move down', right: 'Move right', inventory: 'Inventory', craft: 'Crafting',
-  help: 'How to play', drop: 'Drop item (Shift: stack)', revive: 'Revive a friend', chat: 'Chat', graphics: 'Toggle low graphics',
+  help: 'Wiki', drop: 'Drop item (Shift: stack)', revive: 'Revive a friend', chat: 'Chat', graphics: 'Toggle low graphics',
   palette: 'Palette mode', mute: 'Mute', uiDown: 'UI smaller', uiUp: 'UI larger',
 };
 const BINDS = { ...DEFAULT_BINDS };
@@ -175,7 +176,7 @@ function refreshKeyLabels() {
 navigator.keyboard?.getLayoutMap?.().then((m) => { layoutMap = m; refreshKeyLabels(); renderBinds(); }).catch(() => {});
 refreshKeyLabels();
 
-const PANELS = ['inv-panel', 'craft-panel', 'help-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
+const PANELS = ['inv-panel', 'craft-panel', 'wiki-panel', 'menu-panel', 'settings-panel', 'controls-panel', 'credits-panel'];
 const keys = new Set();
 let mouse = { x: 0, y: 0, l: false };
 
@@ -202,6 +203,8 @@ addEventListener('keydown', (e) => {
     return;
   }
   const chat = $('chat');
+  const typing = document.activeElement?.tagName === 'INPUT' && document.activeElement !== chat;
+  if (typing) { if (e.code === 'Escape') document.activeElement.blur(); return; }
   if (document.activeElement === chat) {
     if (e.key === 'Enter') { const t = chat.value.trim(); if (t) send({ t: 'chat', text: t }); chat.value = ''; chat.hidden = true; chat.blur(); }
     if (e.key === 'Escape') { chat.value = ''; chat.hidden = true; chat.blur(); }
@@ -216,7 +219,7 @@ addEventListener('keydown', (e) => {
   if (c === BINDS.uiDown || c === BINDS.uiUp) { uiNudge = Math.max(0.6, Math.min(2, uiNudge * (c === BINDS.uiDown ? 0.9 : 1.1))); try { localStorage.setItem('campfire.ui', uiNudge); } catch {} applyUIScale(); }
   if (c === 'Tab' || c === BINDS.inventory) { e.preventDefault(); toggle('inv-panel'); }
   if (c === BINDS.craft) toggle('craft-panel');
-  if (c === BINDS.help) toggle('help-panel');
+  if (c === BINDS.help) toggleWiki();
   if (c === 'Escape') {
     const open = PANELS.filter((id) => !$(id).hidden);
     const sub = open.find((id) => $(id).dataset.back);
@@ -387,6 +390,7 @@ function itemTooltip(s) {
   }
   if (it.place) html += '<br><span class="dim">RMB a tile to place</span>';
   if (it.learn) html += `<br><span class="dim">RMB anywhere to read${st.known.has(it.learn) ? ' (already known)' : ''}</span>`;
+  html += `<br><span class="dim">[${K('help')}] wiki</span>`;
   return html;
 }
 
@@ -629,6 +633,8 @@ function pixelScroll(el) {
     bar.hidden = !el.clientHeight || ratio >= 1;
     if (bar.hidden) return;
     bar.style.top = el.offsetTop + 'px';
+    bar.style.left = el.offsetLeft + el.offsetWidth - 14 + 'px';
+    bar.style.right = 'auto';
     bar.style.height = el.clientHeight + 'px';
     const track = el.clientHeight - 4;
     const th = Math.max(16, Math.round(track * ratio));
@@ -677,6 +683,7 @@ function openPanel(id, from) {
   el.hidden = false;
   if (id === 'settings-panel') renderSettings();
   if (id === 'controls-panel') renderBinds();
+  if (id === 'wiki-panel') renderWiki();
   for (const u of scrollUpdaters) u();
   audio.play('open', { vol: 0.45 });
   st.uiBlocking = PANELS.some((p) => !$(p).hidden);
@@ -761,6 +768,67 @@ $('binds-reset').onclick = () => { Object.assign(BINDS, DEFAULT_BINDS); saveBind
 
 // Quit only makes sense in the desktop build.
 if (/Electron/i.test(navigator.userAgent)) { $('quit').hidden = false; $('quit').onclick = () => window.close(); }
+
+// ---------------- wiki ----------------
+let WIKI = null, wikiCur = 'guide:start';
+const wikiHist = [];
+function wikiData() { return (WIKI = buildWiki(iconURL, (a) => keyLabel(BINDS[a]))); }
+function renderWikiNav() {
+  const q = $('wiki-search').value.trim().toLowerCase();
+  const nav = $('wiki-nav');
+  nav.replaceChildren();
+  const seen = new Set();
+  for (const cat of WIKI_CATS) {
+    const list = [...WIKI.values()].filter((a) => a.cat === cat && !seen.has(a) && (!q || a.words.includes(q)) && seen.add(a));
+    if (!list.length) continue;
+    nav.insertAdjacentHTML('beforeend', `<div class="wcat">${cat}</div>`);
+    if (cat !== 'Guides') list.sort((a, b) => a.title.localeCompare(b.title));
+    for (const a of list) {
+      const el = document.createElement('a');
+      el.dataset.wiki = a.id;
+      if (WIKI.get(wikiCur) === a) el.className = 'cur';
+      el.innerHTML = `${iconURL[a.icon] ? `<img src="${iconURL[a.icon]}">` : ''}${a.title}`;
+      nav.append(el);
+    }
+  }
+}
+function showWiki(id, push = true) {
+  const a = WIKI.get(id) ?? WIKI.get('guide:start');
+  if (push && WIKI.get(wikiCur) !== a) wikiHist.push(wikiCur);
+  wikiCur = a.id;
+  $('wiki-article').innerHTML = `<h2>${iconURL[a.icon] ? `<img src="${iconURL[a.icon]}">` : ''}${a.title}</h2><div class="dim small">${a.cat}</div>${a.html}`;
+  $('wiki-article').scrollTop = 0;
+  $('wiki-back').disabled = !wikiHist.length;
+  renderWikiNav();
+}
+function renderWiki() { wikiData(); showWiki(wikiCur, false); }
+function openWiki(id) {
+  if ($('wiki-panel').hidden) openPanel('wiki-panel');
+  if (id) showWiki(id);
+}
+// The wiki key opens the page for whatever you're pointing at (a slot, or a thing in the world).
+function toggleWiki() {
+  if (!$('wiki-panel').hidden) { closePanel('wiki-panel'); return; }
+  const slotEl = document.elementFromPoint(mouse.x, mouse.y)?.closest?.('.slot');
+  const s = slotEl && st.inv[Number(slotEl.dataset.slot)];
+  let id = s ? 'item:' + s.item : null;
+  if (!id && st.world && st.hover && !st.uiBlocking) id = wikiIdFor(st.world, st.hover.x, st.hover.y);
+  openPanel('wiki-panel');
+  if (id && WIKI.has(id)) showWiki(id);
+}
+document.addEventListener('click', (e) => {
+  const l = e.target.closest('[data-wiki]');
+  if (!l || !$('wiki-panel').contains(l)) return;
+  e.preventDefault();
+  showWiki(l.dataset.wiki);
+});
+$('wiki-search').addEventListener('input', renderWikiNav);
+$('wiki-search').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const first = $('wiki-nav').querySelector('a[data-wiki]');
+  if (first) showWiki(first.dataset.wiki);
+});
+$('wiki-back').onclick = () => { if (wikiHist.length) showWiki(wikiHist.pop(), false); };
 
 const logEl = $('log');
 function log(text, c = '#ddd') {

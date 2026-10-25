@@ -70,9 +70,7 @@ html, body { margin: 0; height: 100%; background: #000; color: var(--ink); overf
 
 .panel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 18px; z-index: 4; max-height: calc(86vh / var(--ui, 1)); overflow: auto; }
 .panel h2 { margin: 0 0 10px; font-size: 20px; color: #ffd27a; }
-#help-panel { width: min(860px, calc(94vw / var(--ui, 1))); }
-.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 14px; line-height: 1.4; }
-@media (max-width: 700px) { .help-cols { grid-template-columns: 1fr; } }
+
 
 #craft-panel { width: min(560px, calc(94vw / var(--ui, 1))); }
 .recipe { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 4px 6px; border-bottom: 1px solid #2a1a10; }
@@ -150,3 +148,39 @@ input[type=range]::-moz-range-track { background: transparent; }
 .menu-col > button { width: 280px; text-align: left; padding-left: 16px; }
 .menu-col .name-row { width: 280px; margin-bottom: 6px; }
 .menu-col .name-row input { width: 200px; }
+
+/* ---------- wiki ---------- */
+#wiki-panel { width: min(1000px, calc(96vw / var(--ui, 1))); height: calc(86vh / var(--ui, 1)); }
+.wiki-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.wiki-head h2 { margin: 0; }
+.wiki-head input { margin-left: auto; width: 260px; font: inherit; padding: 5px 8px; background: #120c0c; color: var(--ink); border: 2px solid var(--edge); outline: none; }
+.wiki-head input:focus { border-color: var(--edge-hi); }
+.wiki-body { position: relative; display: grid; grid-template-columns: 230px 1fr; gap: 14px; flex: 1; min-height: 0; }
+.wiki-body .scroll { height: 100%; }
+#wiki-nav .wcat { color: #e0a060; margin: 10px 0 3px; font-size: 13px; }
+#wiki-nav .wcat:first-child { margin-top: 0; }
+#wiki-nav a { display: flex; align-items: center; gap: 6px; padding: 2px 4px; color: var(--ink); cursor: pointer; font-size: 13px; text-decoration: none; }
+#wiki-nav a:hover { background: #2a1c16; }
+#wiki-nav a.cur { background: #3a2418; color: #ffd27a; }
+#wiki-nav img { width: 16px; height: 16px; image-rendering: pixelated; }
+#wiki-article { font-size: 14px; line-height: 1.5; padding-right: 22px; }
+#wiki-article h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
+#wiki-article h2 img { width: 40px; height: 40px; image-rendering: pixelated; }
+#wiki-article h4 { margin: 14px 0 4px; color: #e0a060; font-weight: normal; }
+#wiki-article p { margin: 6px 0; }
+#wiki-article a { color: #ffb070; cursor: pointer; text-decoration: underline; text-decoration-color: #7a4a2a; }
+#wiki-article a:hover { color: #ffd27a; }
+#wiki-article .wl { white-space: nowrap; }
+#wiki-article img.wi { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; image-rendering: pixelated; }
+#wiki-article .wrecipe { margin: 4px 0; }
+#wiki-article .wrecipe .arrow { color: var(--dim); margin: 0 4px; }
+#wiki-article .wrecipe .bp { font-size: 12px; color: #9fd8ff; }
+#wiki-article .wfuel { color: #ffb070; }
+#wiki-article .wtable { border-collapse: collapse; margin: 8px 0; }
+#wiki-article .wtable td, #wiki-article .wtable th { border: 1px solid #3a2418; padding: 3px 8px; text-align: left; }
+#wiki-article .wtable th { color: #e0a060; font-weight: normal; }
+#wiki-article .wgrid { display: grid; gap: 1px; margin: 8px 0; background: #2a1c16; width: max-content; padding: 2px; }
+#wiki-article .wgrid span { width: 28px; height: 28px; background: #120c0c; display: flex; }
+#wiki-article .wgrid img { width: 28px; height: 28px; image-rendering: pixelated; }
+#wiki-article kbd { padding: 0 4px; border: 1px solid var(--edge); background: #120c0c; }
+#wiki-article ol, #wiki-article ul { margin: 4px 0; padding-left: 22px; }
