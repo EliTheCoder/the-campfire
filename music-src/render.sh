@@ -23,7 +23,7 @@ for s in $STEMS; do
     bed) TONE="lowpass 1250 bass +2 120" ;;       # Eli's chords were a lowpassed (~1.15k) piano
     flow) TONE="lowpass 1900 treble -6 3000" ;;
     melody) TONE="lowpass 5000 treble +1 3000" ;;
-    arp) TONE="lowpass 4200 treble +2 3500 gain -6" ;;  # a rolling left hand under the melody, struck hard
+    arp) TONE="lowpass 7500 treble -2 6000 gain -3" ;;  # high sparkle above the melody: keep the shine, tame the ping
     *) TONE="lowpass 2800 treble -3 3500" ;;
   esac
   sox "build/$s-raw.wav" "build/$s-wet.wav" \
@@ -33,11 +33,11 @@ for s in $STEMS; do
 done
 
 # One gain for every stem, set from the everyday mix (everything but the epic arp) so it peaks
-# at -1.5 dB and their balance is kept. The epic moment plays bed+melody+arp together (the arp
-# takes over from flow), so if that would clip, the gain comes down just enough for it too.
+# at -1.5 dB and their balance is kept. The epic moment plays bed+flow+melody+arp together, so if
+# that would clip, the gain comes down just enough for it too.
 peak() { sox "$@" -n stat 2>&1 | awk '/Maximum amplitude/{a=$3} /Minimum amplitude/{b=-$3} END{print (a>b?a:b)}'; }
 sox -m $(for s in bed flow melody lonely; do echo "-v 1 build/$s-wet.wav"; done) build/mix.wav  # -v 1: true sum, like the game playing them at once
-sox -m $(for s in bed melody arp; do echo "-v 1 build/$s-wet.wav"; done) build/epic.wav
+sox -m $(for s in bed flow melody arp; do echo "-v 1 build/$s-wet.wav"; done) build/epic.wav
 PEAK=$(python3 -c "print(max($(peak build/mix.wav), $(peak build/epic.wav) * 0.84 / 0.95))")
 GAIN=$(python3 -c "import math; print(round(20*math.log10(0.84/$PEAK), 2))")
 echo "mix peak $(peak build/mix.wav), epic peak $(peak build/epic.wav) -> gain ${GAIN} dB"

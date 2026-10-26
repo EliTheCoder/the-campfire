@@ -2,8 +2,8 @@
 """The Campfire - soundtrack cut: the game's stems sequenced into one through-composed track.
 
 In the game the stems loop and fade with the fire. Here each 8-bar section of the score is
-played with a chosen set of stems, so the track tells a night at the fire: a lonely start, the
-tune arriving, the first blaze, a dip into the dark, the epic climb, and a short closing tag
+played with a chosen set of stems, so the track tells a night at the fire: straight in with the
+tune, the first blaze, a dip into the dark, the epic climb, and a short closing tag
 (C - D - G) that lets the last chord ring out.
 
 Writes build/ost-<stem>.mid; render-soundtrack.sh turns them into soundtrack.wav/.flac/.mp3.
@@ -16,17 +16,16 @@ A, A8, B, A8b = range(4)
 
 # (which section of the score, which stems play it)
 ARRANGEMENT = [
-    (A,   {'bed', 'lonely'}),                       # dusk: just the chords and a far-off voice
-    (A,   {'bed', 'flow', 'lonely'}),               # the fire catches
-    (A,   {'bed', 'flow', 'melody'}),               # Eli's tune
-    (A8,  {'bed', 'flow', 'melody'}),               #   ...with its octave double
+    (A,   {'bed', 'melody'}),                       # straight in: Eli's tune over his chords
+    (A8,  {'bed', 'flow', 'melody'}),               #   ...the fire catches, the octave double joins
     (B,   {'bed', 'flow', 'melody'}),               # bridge
-    (A8b, {'bed', 'melody', 'arp'}),        # first blaze
+    (A8b, {'bed', 'flow', 'melody', 'arp'}),        # first blaze
     (A8,  {'bed', 'lonely'}),                       # the dark comes in
     (A,   {'bed', 'flow', 'lonely'}),               # finding the way back
-    (B,   {'bed', 'melody', 'arp'}),        # violet fire
-    (A8,  {'bed', 'melody', 'arp'}),        # the whole band
-    (A8b, {'bed', 'melody', 'arp'}),
+    (A,   {'bed', 'flow', 'melody'}),               # the tune returns
+    (B,   {'bed', 'flow', 'melody', 'arp'}),        # violet fire
+    (A8,  {'bed', 'flow', 'melody', 'arp'}),        # the whole band
+    (A8b, {'bed', 'flow', 'melody', 'arp'}),
     (A,   {'bed', 'melody'}),                       # embers
 ]
 FNS = {'bed': c.bed, 'flow': c.flow, 'melody': c.melody, 'lonely': c.lonely, 'arp': c.arp}

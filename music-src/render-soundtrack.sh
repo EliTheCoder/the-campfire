@@ -19,7 +19,7 @@ for s in $STEMS; do
     bed) TONE="lowpass 1250 bass +2 120" ;;
     flow) TONE="lowpass 1900 treble -6 3000" ;;
     melody) TONE="lowpass 5000 treble +1 3000" ;;
-    arp) TONE="lowpass 4200 treble +2 3500 gain -6" ;;
+    arp) TONE="lowpass 7500 treble -2 6000 gain -3" ;;
     *) TONE="lowpass 2800 treble -3 3500" ;;
   esac
   sox "build/ost-$s-raw.wav" "build/ost-$s-wet.wav" $TONE pad 0 8 reverb 78 55 100 100 30 -1
