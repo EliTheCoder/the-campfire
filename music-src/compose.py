@@ -137,13 +137,14 @@ def flow():
     return notes
 
 def arp():
-    # new: bright 16th notes up and down the chord across two octaves above middle C, so it
-    # sparkles over the tune rather than crowding it; a little louder on each beat
+    # new: a rolling left hand, 16th notes up and down the chord *under* the tune, from the root
+    # around C2-B2 up to just below the melody's lowest note (B3), so the two never share a register. It
+    # takes over from flow in epic moments (the two would clash); a little louder on each beat
     notes = []
     for b, (*_, chord) in enumerate(BARS_DATA):
         pcs = sorted({p % 12 for p in chord}, key=lambda pc: (pc - chord[0]) % 12)  # root first
-        tones = sorted(60 + (pc - 60) % 12 for pc in pcs)                          # C4..B4
-        run = [t for o in (0, 12) for t in tones] + [tones[0] + 24]
+        root = 36 + pcs[0] % 12                                                    # C2..B2
+        run = [p for p in range(root, N['A#3'] + 1) if p % 12 in pcs]              # up to A#3
         seq = run + run[-2:0:-1]                                                   # up, then down
         for i in range(16):
             v = 64 + (14 if i % 4 == 0 else 0) + (6 if i == 0 else 0)

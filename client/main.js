@@ -1229,7 +1229,7 @@ function updateAudio(dt) {
   const epic = w.fire.fuel > 0 && (Math.round(w.fire.temp) >= FIRE_TIERS.indexOf('Violet') || performance.now() < (st.epicUntil ?? 0));
   if (st.over) audio.setMusic({});
   else if (me.dead) audio.setMusic({ bed: 0.5, lonely: 1.6 });
-  else if (epic && !dark) audio.setMusic({ bed: 1, flow: 1, melody: 1, arp: 1 }); // the whole band
+  else if (epic && !dark) audio.setMusic({ bed: 1, melody: 1, arp: 1 }); // the whole band (the arp takes over from flow)
   else audio.setMusic({
     bed: dark ? 0.55 : 1,
     flow: !dark && r > 0.25 ? 1 : 0,

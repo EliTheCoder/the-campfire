@@ -21,12 +21,12 @@ ARRANGEMENT = [
     (A,   {'bed', 'flow', 'melody'}),               # Eli's tune
     (A8,  {'bed', 'flow', 'melody'}),               #   ...with its octave double
     (B,   {'bed', 'flow', 'melody'}),               # bridge
-    (A8b, {'bed', 'flow', 'melody', 'arp'}),        # first blaze
+    (A8b, {'bed', 'melody', 'arp'}),        # first blaze
     (A8,  {'bed', 'lonely'}),                       # the dark comes in
     (A,   {'bed', 'flow', 'lonely'}),               # finding the way back
-    (B,   {'bed', 'flow', 'melody', 'arp'}),        # violet fire
-    (A8,  {'bed', 'flow', 'melody', 'arp'}),        # the whole band
-    (A8b, {'bed', 'flow', 'melody', 'arp'}),
+    (B,   {'bed', 'melody', 'arp'}),        # violet fire
+    (A8,  {'bed', 'melody', 'arp'}),        # the whole band
+    (A8b, {'bed', 'melody', 'arp'}),
     (A,   {'bed', 'melody'}),                       # embers
 ]
 FNS = {'bed': c.bed, 'flow': c.flow, 'melody': c.melody, 'lonely': c.lonely, 'arp': c.arp}
