@@ -9,4 +9,6 @@ export default defineConfig({
     proxy: { '/ws': { target: 'ws://localhost:7777', ws: true } },
   },
   base: './',
+  // Cloudflare gives files in public/ a 4h browser cache, so audio URLs carry the build time
+  define: { __BUILD__: JSON.stringify(String(Date.now())) },
 });

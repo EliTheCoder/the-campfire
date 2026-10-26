@@ -1,5 +1,8 @@
 // Hybrid audio: procedural ambience (fire, rain, wind, cold) via Web Audio + CC0 Kenney one-shots.
-// Music slot: drop a file at public/music/theme.ogg and it loops quietly.
+// Music: five piano stems (public/music) looped in sync and faded with the fire.
+
+// Changes every build so new audio isn't stuck behind the CDN's browser cache (dev: none).
+const BUILD = typeof __BUILD__ !== 'undefined' ? __BUILD__ : 'dev';
 
 const SAMPLES = {
   step_grass: 5, step_stone: 5, wood: 3, wood_light: 3, place: 3, mine: 3, rustle: 4, chop: 1,
@@ -29,7 +32,7 @@ export function createAudio() {
     for (const [name, n] of Object.entries(SAMPLES)) {
       buffers[name] = [];
       for (let i = 0; i < n; i++) {
-        fetch(`sfx/${name}_${i}.ogg`).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)).then((buf) => buffers[name].push(buf)).catch(() => {});
+        fetch(`sfx/${name}_${i}.ogg?v=${BUILD}`).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)).then((buf) => buffers[name].push(buf)).catch(() => {});
       }
     }
     buildAmbience();
@@ -256,7 +259,7 @@ export function createAudio() {
   let musicT0 = 0, musicLen = 0;
   function loadMusic() {
     const decoder = new OfflineAudioContext(2, 1, MUSIC_RATE);
-    Promise.all(STEMS.map((name) => fetch(`music/${name}.ogg`).then((r) => r.arrayBuffer()).then((buf) => decoder.decodeAudioData(buf))))
+    Promise.all(STEMS.map((name) => fetch(`music/${name}.ogg?v=${BUILD}`).then((r) => r.arrayBuffer()).then((buf) => decoder.decodeAudioData(buf))))
       .then((buffers) => {
         musicT0 = ctx.currentTime + 0.15;
         musicLen = buffers[0].duration;
